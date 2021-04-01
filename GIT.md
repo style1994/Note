@@ -21,18 +21,12 @@ $ echo 'hello world' | git hash-object --stdin
 
 剛創建的目錄結構：info 與 pack 都為空資料夾
 
-<img src="C:\Users\happi\AppData\Roaming\Typora\typora-user-images\image-20210326095312353.png" alt="	" style="zoom:50%;" />
-
 存入 hello world 字串後目錄結構
 
 ```
 $ echo 'hello world' | git hash-object --stdin -w
 3b18e512dba79e4c8300dd08aeb37f8e728b8dad
 ```
-
-<img src="images/GIT/image-20210326120122309.png" alt="image-20210326120122309" style="zoom:50%;" />
-
-<img src="images/GIT/image-20210326120427742.png" alt="image-20210326120427742" style="zoom:50%;" />
 
 `objects`資料夾多出的3d資料夾，內部存放了一個看似以哈希值命名的檔案，仔細查看你會發現，資料夾名稱為 SHA-1 算法所輸出哈希值的前兩碼，文件名稱則是剩下的38碼。
 
@@ -132,16 +126,20 @@ GIT 對象僅能代表某個文件當下的快照，顯然不能用來代表專�
 提交對象用來描述樹對象，必然包含著這個版本項目的快照，也就是樹對象本身。除此之外，還有許多用來描述樹對象條目，共同組織成一個完整的版本訊息。GIT 對象、樹對象、提交對象組織成一個整體就如下圖所示。
 
 + parent：紀錄前一個提交對象的哈希值，由此依據可以前進後退版本。
+
 + tree：紀錄樹對象的哈希值，由此得知這個版本的項目內容快照。
+
 + author：記錄該版本的作者
+
 + committer：紀錄該版本提交者
+
 + data：紀錄該版本的提交日期
 
-![image-20210326120122309](GIT/image-20210326120122309.png)
+  <img src="images/GIT/image-20210326120122309.png" alt="image-20210326120122309" style="zoom:50%;" />
 
 提交對象中的 parent 記錄該提交對象的父對象，如果版本的內容不源自提交，那麼 parent 為空，通常是第一個提交，該提交也被稱為「root commit」。
 
-![image-20210326120427742](GIT/image-20210326120427742.png)
+<img src="images/GIT/image-20210326120427742.png" alt="image-20210326120427742" style="zoom:50%;" />
 
 ###### 創建提交對象
 
