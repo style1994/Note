@@ -418,17 +418,778 @@ public class Hobby {
 
 `Spring` 原始註解主要是替代`bean`標籤配置
 
-| 註解           | 說明                                                     |
-| -------------- | -------------------------------------------------------- |
-| @Component     | 使用在類上用於實例化Bean                                 |
-| @Controller    | 使用在Controller層類上用於實例化Bean                     |
-| @Service       | 使用在Service層類上用於實例化Bean                        |
-| @Repository    | 使用在Dao層上用於實例化Bean                              |
-| @Autowired     | 使用在成員變量上，根據類型進行依賴注入                   |
-| @Qualifier     | 結合@Autowired一起使用，用於根據名稱進行依賴注入         |
-| @Resource      | 等於@Autowired + @Qualifier，根據名稱進行注入            |
-| @Value         | 使用在成員變量上，注入普通屬性                           |
-| @Scope         | 標註Bean的作用範圍                                       |
-| @PostConstruct | 使用在方法上，指定Bean的初始化方法，構造方法執行完後調用 |
-| @PreDestroy    | 使用在方法上，指定Bean的銷毀方法，在Bean被銷毀前調用     |
+| 註解           | 說明                                                         |
+| -------------- | ------------------------------------------------------------ |
+| @Component     | 使用在類上用於實例化Bean                                     |
+| @Controller    | 使用在Controller層類上用於實例化Bean                         |
+| @Service       | 使用在Service層類上用於實例化Bean                            |
+| @Repository    | 使用在Dao層上用於實例化Bean                                  |
+| @Autowired     | 根據類型進行依賴注入。**可以在構造器、方法、參數、成員變量上使用。** |
+| @Qualifier     | 必須結合@Autowired一起使用，用於根據`bean id`進行依賴注入    |
+| @Resource      | 等於@Autowired + @Qualifier，根據bean id進行注入。改善@Qualifier還須搭配@Autowired一起使用問題。**可以在成員變量、方法上使用** |
+| @Value         | 使用在成員變量上，注入普通屬性                               |
+| @Scope         | 標註Bean的作用範圍                                           |
+| @PostConstruct | 使用在方法上，指定Bean的初始化方法，構造方法執行完後調用     |
+| @PreDestroy    | 使用在方法上，指定Bean的銷毀方法，在Bean被銷毀前調用         |
+
+> @Component、@Controller、@Service、@Repository 這四個註解功能都是告訴 Spring 該類為 bean。使用後三者能詳細區分出是分層架構中哪一層的 bean，幫助閱讀程式碼。如果無法歸類請使用@Component。
+
+注意，使用註解進行開發時，需要在配置文件中配置組件掃描，作用是指定哪個包即其子包下的Bean需要進行掃描以便識別使用註解配置的Class、Field、Method。
+
+```xml
+<!-- 註解類的組件掃描 -->
+<context:component-scan base-package="目標package下所有類"></context:component-scan> 
+```
+
+> @Value注入可以搭配SPEL的方式，讀取在配置文件中導入的properties檔數據
+
+##### 不推薦使用@Autowired進行Field注入的原因
+
+在使用IDEA開發時，在 Field 上使用Spring的依賴注入註解 `@Autowired` 後會出現如下警告
+
+> Field injection is not recommended(成員變量注入是不推薦的)
+
+###### @Autowired vs @Resource
+
+實際上，它們的基本功能都是通過註解實現**依賴注入**，只不過 `@Autowired` 是 Spring 定義的，而 `@Resource` 是 JSR-250 定義的。功能大致相同，但是還有一些細節不同。
+
++ 依賴識別方式：`@Autowired` 默認是 byType 可以搭配 `@Qualifier` 指定 Name，`@Resource` 默認 byName 如果找不到則 byType
++ 適用對象：`@Autowired`可以對構造器、方法、參數、成員變量使用。`@Resource`只能對方法、成員變量使用。
++ 提供方：`@Autowired` 是 Spring 提供。`@Resource` 是 JSR-250 提供的。
+
+###### 各種依賴注入方式的優缺點
+
+Spring 官方文檔，建議了如下的使用場景
+
++ 構造器注入：強依賴性(即必須使用此依賴)，不變性(各依賴不會經常變動)
++ Setter注入：可選(沒有此依賴也可以工作)，可變(依賴會經常變動)
++ Field注入：大多數情況盡量少使用，一定要使用的話，`@Resource`相對`@Autowired`對IOC容器偶合度更低。
+
+###### Field注入的缺點
+
++ 不能像構造器注入那樣注入不可變對象(指定強依賴)。
++ 依賴對外部不可見，外界可以看到構造器和setter，但是無法看到私有成員變量。
++ 你的類和DI容器強耦合在一起
++ 單元測試時，你無法直接初始化該類，必須依賴DI容器。因為 private 成員，沒提供訪問方法。
++ @Autowired太過方便容易讓你放棄對依賴的思考
+
+##### 範例
+
+未使用註解開發的 Spring xml 配置
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd">
+
+    <bean id="userDao" class="org.learning.dao.impl.UserDaoImpl" scope="singleton" />
+
+    <bean id="userService" class="org.learning.service.impl.UserServiceImpl" 					scope="singleton">
+        <property name="userDao" ref="userDao" />
+    </bean>
+</beans>
+```
+
+使用註解開發
+
+```java
+// <bean id="userDao" class="org.learning.dao.impl.UserDaoImpl" scope="singleton" />
+@Repository("userDao")
+@Scope("singleton")
+public class UserDaoImpl implements UserDao {
+
+    @Override
+    public void save() {
+        System.out.println("save running ...");
+    }
+}
+```
+
+```java
+@Service("userService")
+@Scope("singleton")
+public class UserServiceImpl implements UserService {
+
+    // <property name="userDao" ref="userDao" />-->
+    @Autowired
+    @Qualifier("userDao")
+    private UserDao userDao;
+
+    // 使用@Autowired進行Field注入，不需要寫setter方法。當然@Autowired也能寫在setter和constructor		上
+    /*
+    public void setUserDao(UserDao userDao){
+        this.userDao = userDao;
+    }
+    */
+
+    @Override
+    public void doSave() {
+        userDao.save();
+    }
+    
+    // 對應bean標籤init-method屬性
+    @PostConstruct
+    private void init(){
+        System.out.println("service do init");
+    }
+
+    // 對應bean標籤destroy-method屬性
+    @PreDestroy
+    private void destroy(){
+        System.out.println("service do destroy");
+    }
+}
+```
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd http://www.springframework.org/schema/context https://www.springframework.org/schema/context/spring-context.xsd">
+    <context:component-scan base-package="org.learning"></context:component-scan>
+</beans>
+```
+
+#### Spring 新註解
+
+使用原始註解並不能完全替代調 xml 上的配置
+
++ 非自定義的bean `<bean>`
++ 加載properties文件的配置 `<context:property-placeholder>`
++ 組件掃描配置 `<context:component-scan>`
++ 引入其他配置文件 `<import>`
+
+這時就由新註解來替代這些 xml 配置
+
+| 註解            | 說明                                                         |
+| --------------- | ------------------------------------------------------------ |
+| @Configuration  | 指定當前類是一個 Spring 配置類，當創建容器時會從該類上加載註解。<br />將該類想像為一個 Spring 配置文件即可。 |
+| @ComponentScan  | 用於指定 Spring 在初始化容器時要掃描的包，作用和 `<context:component-scan>` 一樣 |
+| @Bean           | 用於方法上，將方法返回值儲存到 Spring 容器中。               |
+| @PropertySource | 用於加載 properties 文件的配置                               |
+| @Import         | 導入其它 Spring 配置類                                       |
+
+現在使用新入解替代以下xml配置
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd http://www.springframework.org/schema/context https://www.springframework.org/schema/context/spring-context.xsd">
+    <context:property-placeholder location="user.properties" />
+    <bean id="user" class="org.learning.entity.User">
+        <property name="name" value="${name}" />
+        <property name="age" value="${age}" />
+    </bean>
+    <context:component-scan base-package="org.learning"></context:component-scan>
+</beans>
+```
+
+首先需要創建一個主配置類，用於代表`applicationContext.xml`文件。
+
+```java
+// 標示該類為一個配置類
+@Configuration
+// <context:component-scan base-package="org.learning"></context:component-scan>
+@ComponentScan("org.learning")
+// 導入另一個配置類
+@Import(UserConfiguration.class)
+public class SpringConfiguration {
+}
+```
+
+為了示範導入其它配置，這裡將加入非自定義bean的配置，放到另一個配置類`UserCongfiguration`
+
+```java
+// 標示該類為配置類
+@Configuration
+// 載入外部properties文件
+@PropertySource("user.properties")
+public class UserConfiguration {
+
+    @Value("${name}")
+    private String name;
+    @Value("${age}")
+    private String age;
+
+    // 演示非自定義類如何使用註解方式，載入到Spring容器
+    @Bean("user")
+    public User getUser(){
+        User user = new User();
+        user.setName(name);
+        user.setAge(age);
+        return user;
+    }
+}
+```
+
+最後在創建容器時，需要使用`AnnotationConfigApplicationContext`類替代`ClassPathXmlApplicationContext`類，改為讀取配置類而不是xml配置文件方式，來創建 Spring 容器。
+
+```java
+AnnotationConfigApplicationContext app = new AnnotationConfigApplicationContext(SpringConfiguration.class);
+```
+
+至此已完成使用 Spring 新註解替代 xml 配置。
+
+### Spring整合junit
+
+要測試容器內的Bean物件，每個方法的第一行都要創建容器，獲取相應Bean。每個方法都需要寫類似的代碼有點繁瑣。
+
+```java
+ApplicationContext app = new AnnotationConfigApplicationContext(SpringConfiguration.class);
+app.getBean("testBean");
+```
+
++ Spring提供了SpringJunit負責創建容器，但是需要將配置文件名稱告訴它。
+
++ 將需要測試的Bean直接在測試類進行注入。
+
+想要使用 SpringJunit 有以下步驟
+
+1. 在 maven 導入 Spring 集成 Junit 依賴(導入junit和spring-test)
+
+   ```xml
+   <dependency>
+       <groupId>junit</groupId>
+       <artifactId>junit</artifactId>
+       <version>4.12</version>
+       <scope>test</scope>
+   </dependency>
+   <dependency>
+       <groupId>org.springframework</groupId>
+       <artifactId>spring-test</artifactId>
+       <version>5.2.1.RELEASE</version>
+   </dependency>
+   ```
+
+2. 使用 `@RunWith` 註解替換原來的運行期
+
+3. 使用 `@ContextConfiguration` 指定配置文件或配置類，value 指定xml文件，classes指定配置類
+
+4. 使用 `@Autowired` 注入需要測試的對象
+
+5. 創建測試方法進行測試
+
+```java
+@RunWith(SpringJUnit4ClassRunner.class)
+@ContextConfiguration(classes = {SpringConfiguration.class})
+public class SpringJunitTest {
+
+    @Autowired
+    UserService userService;
+
+    @Test
+    public void test1(){
+        System.out.println(userService);
+    }
+}
+```
+
+### Spring AOP
+
+AOP為Aspect Oriented Programming的縮寫，意思為**面向切面編程**，是通過預編譯方試和運行**動態代理**實現程序功能的統一維護的一種技術。
+
+**動態代理：不修改程式碼的情況下，對目標方法做相應的增強。實現程序之間的鬆耦合。**
+
+AOP是OOP的延續，是軟件開發中的一個熱點，也是Spring框架的一個重要內容，是函數編程的一種衍生範型。利用AOP可以對業務邏輯的各部分進行隔離，從而使得業務邏輯各部分之間的耦合度降低，提高程序的可用性，同時提高開發的效率。
+
+#### AOP的作用與優勢
+
++ 作用：在程序運行期間，不修改源碼的情況下對此方法進行功能的增強。
++ 優勢：減少代碼重複性，提高開發效率，並且便於維護。
+
+#### AOP的底層實現
+
+實際上，Spring AOP的底層是通過 Spring 提供的動態代理技術實現的。在運行期間，Spring通過動態代理技術，動態的生成代理對象，代理對象方法執行時進行增強功能的介入，再去調用目標對象的方法，從而完成功能的增強。
+
+常用的動態代理技術：
+
++ JDK代理：基於接口的動態代理技術
++ cglib：基於類的動態代理技術
+
+#### JDK的動態代理
+
+JDK是基於接口現實動態代理技術，所以首先必須有**接口**，以及**目標對象(接口實現類)**。
+
+> JDK的動態代理不須引入其他第三方類庫。JDK以內置相關功能。
+
+JDK動態代理參與角色：
+
+1. 目標對象
+2. 目標對象的接口(可能有多個)
+3. 增強的功能，可能是另一個對象的方法。
+
+範例：`TargetInterface` 為目標對象的接口、`Target`為目標對象、`Enhance` 為增強方法的對象
+
+```java
+public interface TargetInterface {
+    void save();
+}
+
+public class Target implements TargetInterface{
+    @Override
+    public void save() {
+        System.out.println("save is running ...");
+    }
+}
+
+public class Enhance {
+    // 前置增強
+    public static void before(){
+        System.out.println("before is running");
+    }
+
+    // 後置增強
+    public static void after(){
+        System.out.println("after is running");
+    }
+}
+```
+
+```java
+public class Demo {
+    public static void main(String[] args) {
+        Target target = new Target();
+        // 生成代理對象使用Proxy.newProxyInstance，該方法接收三個參數
+        //1. 目標對象的類加載器
+        //2. 目標對象的接口數組
+        //3. 調用處理類，調用代理對象的任何方法，其實都是執行invoke方法。
+        
+        
+        TargetInterface proxyInstance = (TargetInterface) Proxy.newProxyInstance(target.getClass().getClassLoader(), target.getClass().getInterfaces(), new InvocationHandler() {
+            //   invoke三個參數分別是 代理對象、目標對象方法、目標對象方法參數。
+            //   invoke方法返回值為，執行完目標對象方法後的返回值。
+            @Override
+            public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+                // 前置增強
+                Enhance.before();
+                // 目標對象方法
+                Object invoke = method.invoke(target, args);
+                // 後置增強
+                Enhance.after();
+                return invoke;
+            }
+        });
+
+        // 調用代理對象的內的方法(接口定義方法)，Proxy.newProxyInstance返回的代理對象需強轉為目標接口類型。
+        proxyInstance.save();
+    }
+}
+```
+
+#### cglib 的動態代理
+
+cglib 為第三方類庫，Spring近期的版本已經將其集成到`spring-core`下，在早期要使用Spring還需手動引入cglib 依賴。
+
+cglib是基於父類的動態代理技術，參與的角色有：
+
+1. 目標父類對象
+2. 增強的功能
+
+範例：`Target`為目標對象、`Enhance` 為增強方法的對象
+
+```java
+public class Target{
+    public void save() {
+        System.out.println("save is running ...");
+    }
+}
+
+public class Enhance {
+    // 前置增強
+    public static void before(){
+        System.out.println("before is running");
+    }
+
+    // 後置增強
+    public static void after(){
+        System.out.println("after is running");
+    }
+}
+```
+
+```java
+public class Demo {
+    public static void main(String[] args) {
+        final Target target = new Target();
+
+        // cglib的動態代理
+        // 1. 創建增強器
+        Enhancer enhancer = new Enhancer();
+        // 2. 設置父類(目標對象)
+        enhancer.setSuperclass(Target.class);
+        // 3. 設置回調方法
+        enhancer.setCallback(new MethodInterceptor() {
+            // 方法前三個參數與JDK代理invoke一致，第4個為方法的代理對象
+            @Override
+            public Object intercept(Object proxy, Method method, Object[] args, MethodProxy methodProxy) throws Throwable {
+                // 前置增強
+                Enhance.before();
+                // 目標對象方法
+                Object invoke = method.invoke(target, args);
+                // 後置增強
+                Enhance.after();
+                return invoke;
+            }
+        });
+        // 4. 創建代理對象(注意轉型)
+        Target proxy = (Target) enhancer.create();
+
+        
+        proxy.save();
+    }
+}
+```
+
+#### Spring 的 AOP 簡介
+
+##### AOP概念
+
+Spring 的 AOP 底層實現就是對上面動態代理代碼進行了封裝，封裝後我們只需要關注部分進行代碼編寫，並通過配置的方式完成指定目標方法的增強。
+
+在正式講解AOP之前，我們必須理解AOP相關術語，常用術語如下：
+
++ Target(目標對象)：代理的目標對象
++ Proxy(代理對象)：一個類被AOP增強後，就產生一個代理對象
++ Joinpoint(連接點)：所謂連接點是指那些被攔截到的點。在 Spring 中這些點指的是方法，因為 Spring 只支持方法類型的連接點。**可以被增強的方法就稱為「連接點」**。
++ PointCut(切入點/切點)：所謂切入點就是對哪些Joinpoint進行攔截的定義。可以理解為**被增強的方法稱為「切入點」**。
++ Advice(通知/增強)：攔截到Joinpoint之後要做的事情就是通知。就是指前置增強與後製增強的那些方法。
++ Aspect(切面)：是切入點與通知的結合。就是JDK或cglib動態代理中的回調方法。
++ Weaving(織入)：是指運行期間把增強應用到目標對象來創建代理對象的過程。Spring 採用動態代理織入，而AspectJ採用編譯時期織入與類裝載期織入。
+
+##### AOP開發明確事項
+
+1. 需要編寫的內容
+   + 編寫核心業務代碼(目標類的目標方法)
+   + 編寫切面類，切面類中定義通知。
+   + 配置文件中，配置織入關係，即哪些通知與哪些連接點進行結合。
+
+2. AOP技術實現的內容
+
+   Spring 框架監控切入點方法的執行，一旦監控到切入點方法被運行，使用代理機制，動態創建目標對象的代理對象，根據通知類別，在代理對象對象的相應位置，將通知相應的功能織入，完成完整代碼邏輯運行。
+
+3. 在Spring中，框架會根據目標類是否實現了接口來決定是使用JDK或cglib
+
+##### 基於XML的AOP開發
+
+1. 導入AOP相關依賴
+
+   Spring 有兩套 AOP 配置，Spring 原生與融合另一個更優秀的AOP框架 AspectJ。Speing 也推薦使用基於AspectJ所提供的AOP配置。
+
+   ```xml
+   <dependency>
+       <groupId>org.aspectj</groupId>
+       <artifactId>aspectjweaver</artifactId>
+       <version>1.9.6</version>
+   </dependency>
+   ```
+
+   
+
+2. 創建目標接口和目標類(內有切點)
+
+3. 創建切面類(內有增強方法)
+
+4. 將目標類和切點類的對象創建權交給Spring管理(bean)
+
+   Spring 大多數功能都是建立在Spring容器上，所以目標類與切面類都需交由Spring管理
+
+5. 在xml配置文件織入關係(aop:config)
+
+   ```xml
+   <?xml version="1.0" encoding="UTF-8"?>
+   <beans xmlns="http://www.springframework.org/schema/beans"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns:aop="http://www.springframework.org/schema/aop" 
+          xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+                               http://www.springframework.org/schema/aop http://www.springframework.org/schema/aop/spring-aop.xsd">
+   </beans>
+   ```
+
+   > xml 配置文件需先宣告aop命名空間
+
+6. 測試代碼
+
+   
+
+###### 切點表達式的寫法
+
+表達式語法
+
+```
+execution([修飾符] 返回值類型 包名.類名.方法名(參數))
+```
+
++ 修飾符可以省略
++ 返回值類型、包名、類型、方法名可以使用星號`*`代表任意
++ 包名與類名之間一個點`.`代表當前包下的類，兩個點`..`表示當前包及其子包下的類
++ 參數類表可以使用兩個點`..`表示任意個數、任意類型的參數
+
+範例
+
+```
+// 指定org.learning.aop包下的Target類中的無參method方法，且限定需沒有返回值
+execution(public void org.learning.aop.Target.method())
+
+// 指定org.learning.aop包下的Target類中所有任意參數的方法，且限定需沒有返回值
+execution(void org.learning.aop.Target.*(..))
+
+// 指定org.learning.aop包下的任意類中所有任意參數的方法，且沒有限定返回值
+execution(* org.learning.aop.*.*(..))
+
+// 指定org.learning.aop包及其子包下所有類中所有任意參數的方法，且沒有限定返回值
+execution(* org.learning.aop..*.*(..))
+// 任意包下的任意類的任意參數的方法，且沒有限定返回值
+execution(* *..*.*(..))
+```
+
+###### 通知的類型
+
+通知配置語法
+
+```xml
+<aop:通知類型 method="切面類中方法名" pointcut="切點表達式" />
+```
+
+| 名稱         | 標籤                    | 說明                                                         |
+| ------------ | ----------------------- | ------------------------------------------------------------ |
+| 前置通知     | `<aop:before>`          | 用於配置前置通知。<br />指定的增強方法在切入點方法之前執行。 |
+| 後置通知     | `<aop:after-returning>` | 用於配置後置通知。<br />指定的增強方法在切入點方法之後執行。 |
+| 環繞通知     | `<aop:around>`          | 用於配置環繞通知。<br />指定的增強方法在切入點方法之前和之後都執行。 |
+| 異常拋出通知 | `<aop:throwing>`        | 用於配置異常拋出通知。<br />指定切入點方法在出現異常時執行   |
+| 最終通知     | `<aop:after>`           | 用於配置最終通知。<br />無論切入點的方法執行後是否有異常都會執行。 |
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:aop="http://www.springframework.org/schema/aop"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+                            http://www.springframework.org/schema/aop http://www.springframework.org/schema/aop/spring-aop.xsd">
+    <!-- 目標對象bean -->
+    <bean id="target" class="aop.Target" />
+
+    <!-- 切面類bean -->
+    <bean id="myAspect" class="aop.MyAspect" />
+    
+    <!-- spring aop 配置 -->
+    <aop:config>
+        <!-- 定義切面 -->
+        <aop:aspect ref="myAspect">
+            <!-- 定義織入關係 -->
+            <!-- 前置增強 -->
+            <aop:before method="before" pointcut="execution(public void aop.Target.save())"></aop:before>
+            <!-- 後置增強 -->
+            <aop:after-returning method="afterReturning" pointcut="execution(public void aop.Target.save())"></aop:after-returning>
+            <!-- 環繞增強 -->
+            <aop:around method="around" pointcut="execution(public void aop.Target.save())"></aop:around>
+            <!-- 異常拋出增強 -->
+            <aop:after-throwing method="afterThrowing" pointcut="execution(public void aop.Target.save())"></aop:after-throwing>
+            <!-- 最終增強 -->
+            <aop:after method="after" pointcut="execution(public void aop.Target.save())"></aop:after>
+
+        </aop:aspect>
+    </aop:config>
+</beans>
+```
+
+###### 切點表達式的抽取
+
+上面的範例xml配置，可以發現切點表達式`pointcut="execution(public void aop.Target.save())`頻繁出現，這時我們就可以將該切點表達式抽取出來，並為切點命名，之後使用`pointcut-ref`屬性替代`pintcut`屬性。
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:aop="http://www.springframework.org/schema/aop"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+                            http://www.springframework.org/schema/aop http://www.springframework.org/schema/aop/spring-aop.xsd">
+    <!-- 目標對象bean -->
+    <bean id="target" class="aop.Target" />
+
+    <!-- 切面類bean -->
+    <bean id="myAspect" class="aop.MyAspect" />
+    
+    <!-- spring aop 配置 -->
+    <aop:config>
+        <!-- 定義切點 -->
+        <aop:pointcut id="myPointcut" expression="execution(public void aop.Target.save())"/>
+        <!-- 定義切面 -->
+        <aop:aspect ref="myAspect">
+            <!-- 定義織入關係 -->
+            <!-- 前置增強 -->
+            <aop:before method="before" pointcut-ref="myPointcut"></aop:before>
+            <!-- 後置增強 -->
+            <aop:after-returning method="afterReturning" pointcut-ref="myPointcut"></aop:after-returning>
+            <!-- 環繞增強 -->
+            <aop:around method="around" pointcut-ref="myPointcut"></aop:around>
+            <!-- 異常拋出增強 -->
+            <aop:after-throwing method="afterThrowing" pointcut-ref="myPointcut"></aop:after-throwing>
+            <!-- 最終增強 -->
+            <aop:after method="after" pointcut-ref="myPointcut"></aop:after>
+
+        </aop:aspect>
+    </aop:config>
+</beans>
+```
+
+##### 基於註解的AOP開發
+
+開發步驟：
+
+1. 創建目標接口和目標類(內部有切點)
+2. 創建切面類(內部有通知/增強方法)
+3. 將目標類和切面類對象創建權交給Spring管理
+4. 在切面類中使用註解配置織入關係
+5. 在Spring配置類中開啟組件掃描和AOP的自動代理
+6. 測試
+
+###### AOP 註解
+
+通知註解的語法`@通知註解("切點表達式")`
+
+| 註解                      | 說明                                                         |
+| ------------------------- | ------------------------------------------------------------ |
+| `@EnableAspectJAutoProxy` | 啟動AspectJ動態代理                                          |
+| `@Aspect`                 | 標注該類為切面類                                             |
+| `@Pointcut`               | 提取切點表達式，註解使用在方法上。<br />之後可以在各增強方法上以「方法名()」引用該切點表達式。 |
+| `@Before`                 | 用於配置**前置通知**，指定的增強方法在切入點方法之前執行     |
+| `@After-returning`        | 用於配置**後置通知**，指定的增強方法在切入點方法之後執行     |
+| `@Around`                 | 用於配置**環繞通知**，指定的增強方法在切入點方法前後執行     |
+| `@AfterThrowing`          | 用於配置**異常通知**，指定的增強方法在切入點方法出現異常後執行 |
+| `@After`                  | 用於配置**最終通知**，指定的增強方法在切入點後執行(無論有無異常)。 |
+
+###### 範例
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:aop="http://www.springframework.org/schema/aop"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+                            http://www.springframework.org/schema/aop http://www.springframework.org/schema/aop/spring-aop.xsd http://www.springframework.org/schema/context https://www.springframework.org/schema/context/spring-context.xsd">
+    <!-- 配置組件掃描 -->
+    <context:component-scan base-package="anno" />
+
+    <!-- aop 自動代理 -->
+    <aop:aspectj-autoproxy></aop:aspectj-autoproxy>
+</beans>
+```
+
+```java
+@Component("myAspect")
+// 標注該類為切面類
+@Aspect
+public class MyAspect {
+
+    // 前置增強
+    // <aop:before method="before" pointcut="execution(public void aop.Target.save())" />
+    @Before("execution(public void anno.Target.save())")
+    public void before(){
+        System.out.println("前置增強");
+    }
+
+    // 後置增強
+    // <aop:AfterReturning method="before" pointcut="execution(public void aop.Target.save())" />
+    @AfterReturning("execution(public void anno.Target.save())")
+    public void afterReturning(){
+        System.out.println("後置增強");
+    }
+
+    /**
+     * 環繞增強
+     * @param joinPoint 切入點方法
+     * @return 切入點返回值
+     * @throws Throwable
+     */
+    // <aop:Around method="before" pointcut="execution(public void aop.Target.save())" />
+    @Around("execution(public void anno.Target.save())")
+    public Object around(ProceedingJoinPoint joinPoint) throws Throwable {
+        System.out.println("環繞-前");
+        // 執行切入點方法
+        Object o = joinPoint.proceed();
+        System.out.println("環繞-後");
+
+        return o;
+    }
+
+    // 異常拋出增強
+    // <aop:AfterThrowing method="before" pointcut="execution(public void aop.Target.save())" />
+    @AfterThrowing("execution(public void anno.Target.save())")
+    public void afterThrowing(){
+        System.out.println("異常拋出增強");
+    }
+
+    // 最終增強
+    // <aop:After method="before" pointcut="execution(public void aop.Target.save())" />
+    @After("execution(public void anno.Target.save())")
+    public void after(){
+        System.out.println("最終增強");
+    }
+}
+```
+
+###### 切點表達式抽取
+
+範例中的`MyAspect`切面類，重複使用到同一個切點表達式。此時可以通過`@Pointcut`註解提取該表達式。之後就可以在各增強方法上使用「切面類名.方法名()」或「方法名()」的方式來引用該切面表達式。
+
+```java
+@Component("myAspect")
+// 標注該類為切面類
+@Aspect
+public class MyAspect {
+	// 提取切面表達式
+    @Pointcut("execution(public void anno.Target.save())")
+    public void myPointcut(){};
+
+    // 前置增強
+    // <aop:before method="before" pointcut="execution(public void aop.Target.save())" />
+    @Before("myPointcut()")
+    public void before(){
+        System.out.println("前置增強");
+    }
+
+    // 後置增強
+    // <aop:AfterReturning method="before" pointcut="execution(public void aop.Target.save())" />
+    @AfterReturning("myPointcut()")
+    public void afterReturning(){
+        System.out.println("後置增強");
+    }
+
+    /**
+     * 環繞增強
+     * @param joinPoint 切入點方法
+     * @return 切入點返回值
+     * @throws Throwable
+     */
+    // <aop:Around method="before" pointcut="execution(public void aop.Target.save())" />
+    @Around("myPointcut()")
+    public Object around(ProceedingJoinPoint joinPoint) throws Throwable {
+        System.out.println("環繞-前");
+        // 執行切入點方法
+        Object o = joinPoint.proceed();
+        System.out.println("環繞-後");
+
+        return o;
+    }
+
+    // 異常拋出增強
+    // <aop:AfterThrowing method="before" pointcut="execution(public void aop.Target.save())" />
+    @AfterThrowing("myPointcut()")
+    public void afterThrowing(){
+        System.out.println("異常拋出增強");
+    }
+
+    // 最終增強
+    // <aop:After method="before" pointcut="execution(public void aop.Target.save())" />
+    @After("myPointcut()")
+    public void after(){
+        System.out.println("最終增強");
+    }
+}
+```
 
