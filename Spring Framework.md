@@ -855,7 +855,7 @@ Spring 的 AOP 底層實現就是對上面動態代理代碼進行了封裝，�
 + Target(目標對象)：代理的目標對象
 + Proxy(代理對象)：一個類被AOP增強後，就產生一個代理對象
 + Joinpoint(連接點)：所謂連接點是指那些被攔截到的點。在 Spring 中這些點指的是方法，因為 Spring 只支持方法類型的連接點。**可以被增強的方法就稱為「連接點」**。
-+ PointCut(切入點/切點)：所謂切入點就是對哪些Joinpoint進行攔截的定義。可以理解為**被增強的方法稱為「切入點」**。
++ PointCut(切入點/切點)：所謂切入點就是對符合條件的Joinpoint進行攔截的定義。可以理解為**被增強的方法稱為「切入點」**。
 + Advice(通知/增強)：攔截到Joinpoint之後要做的事情就是通知。就是指前置增強與後製增強的那些方法。
 + Aspect(切面)：是切入點與通知的結合。就是JDK或cglib動態代理中的回調方法。
 + Weaving(織入)：是指運行期間把增強應用到目標對象來創建代理對象的過程。Spring 採用動態代理織入，而AspectJ採用編譯時期織入與類裝載期織入。
@@ -917,6 +917,18 @@ Spring 的 AOP 底層實現就是對上面動態代理代碼進行了封裝，�
 
 ###### 切點表達式的寫法
 
+切點(Pointcut)表達式用來定義斷言，用於匹配、判斷哪些連接點(Joinpoint)是否要織入通知(Advice)。Spring AOP 的切點表達式主要借鏡於 AspectJ，然而並未全部支援，可使用的代號有以下幾個：
+
+- `execution`：最主要的表示式，用來匹配方法執行的 Join Point。
+- `within`：必須是指定的型態，可用來取代某些 `execution` 模式。
+- `this`：代理物件必須是指定的型態，常用於 Advice 中要取得代理物件之時。
+- `target`：目標物件必須是指定的型態，常用於 Advice 中要取得目標物件之時。
+- `args`：引數必須是指定的型態，常用於 Advice 中要取得方法引數之時。。
+- `@target`：目標物件必須擁有指定的標型，常用於 Advice 中要取得標註之時。
+- `@args`：引數必須擁有指定的標註，常用於 Advice 中要取得標註之時。
+- `@within`：必須擁有指定的標註，常用於 Advice 中要取得標註之時。
+- `@annotation`：方法上必須擁有指定的標註，常用於 Advice 中要取得標註之時。
+
 表達式語法
 
 ```
@@ -927,6 +939,8 @@ execution([修飾符] 返回值類型 包名.類名.方法名(參數))
 + 返回值類型、包名、類型、方法名可以使用星號`*`代表任意
 + 包名與類名之間一個點`.`代表當前包下的類，兩個點`..`表示當前包及其子包下的類
 + 參數類表可以使用兩個點`..`表示任意個數、任意類型的參數
+
+> `*`表示任意符號，`..`表示0或多個符號。
 
 範例
 
@@ -945,6 +959,26 @@ execution(* org.learning.aop..*.*(..))
 // 任意包下的任意類的任意參數的方法，且沒有限定返回值
 execution(* *..*.*(..))
 ```
+
+`within` 限定必須是指定的型態，可以使用 `*` 或 `..`，某些 `execution` 模式，可以使用 `within` 取代，例如：
+
+- `within(cc.openhome.model.AccountDAO)` 相當於 `execution(* cc.openhome.model.AccountDAO.*(..))`
+- `within(cc.openhome.model.*)` 相當於 `execution(* cc.openhome.model.*.*(..))`
+- `within(cc.openhome.model..*)` 相當於 `execution(* cc.openhome.model.service..*.*(..))`
+
+Pointcut 表示式可以使用 `&&`、`||` 與 `!` 來作關係運算
+
+```java
+@Around("execution(* cc.openhome.model.AccountDAO.*(..)) && this(nullable)")
+public Object around(ProceedingJoinPoint proceedingJoinPoint, Nullable nullable) throws Throwable
+
+```
+
+這表示，必須是 `cc.openhome.model.AccountDAO` 型態上的方法，而且代理物件必須是 `Nullable`，因為使用了 `&&`，而且 `this(nullable)` 中的 `nullable` 表示，從 `around` 方法上與 `nullable` 同名的參數得知型態。
+
+當然，如果只是想限定代理物件必須是 `cc.openhome.aspect.Nullable`，只要寫 `this(cc.openhome.aspect.Nullable)` 就可以了。
+
+其他的代號與 `this` 類似，也都可以用來在 Advice 中取得對應的物件；`args` 若有多個引數要定義，可以使用 `args(name, email)` 這類的形式，或者也可以使用 `args(name,..)` 表示至少有一個參數。
 
 ###### 通知的類型
 
@@ -1053,7 +1087,7 @@ execution(* *..*.*(..))
 
 | 註解                      | 說明                                                         |
 | ------------------------- | ------------------------------------------------------------ |
-| `@EnableAspectJAutoProxy` | 啟動AspectJ動態代理                                          |
+| `@EnableAspectJAutoProxy` | 啟動AspectJ動態代理，使用於Spring配置類上                    |
 | `@Aspect`                 | 標注該類為切面類                                             |
 | `@Pointcut`               | 提取切點表達式，註解使用在方法上。<br />之後可以在各增強方法上以「方法名()」引用該切點表達式。 |
 | `@Before`                 | 用於配置**前置通知**，指定的增強方法在切入點方法之前執行     |
@@ -1193,3 +1227,266 @@ public class MyAspect {
 }
 ```
 
+### Spring JdbcTemplate
+
+它是 `Spring` 框架中提供的一個對象，是對原始繁瑣的 Jdbc API 對象的簡單封裝。`Spring` 框架提供了許多**操作模板類**，都是對一些其他技術的封裝。例如：操作關係型數據庫的 `JdbcTemplate`、`HibernateTemplate`，操作 nosql 數據庫的 `RedisTemplate`，操作消息隊列的 `JmsTemplate` 等等。
+
+#### JdbcTemplate開發步驟
+
+1. 導入`spring-jdbc` 和 `spring-tx` 依賴。`spring-tx`是事務相關 API。
+2. 創建數據表和表對應實體
+3. 創建 `JdbcTemplate` 對象
+4. 執行數據庫操作
+
+```java
+/**
+     * 測試JdbcTemplate開發步驟
+     */
+@Test
+public void test1() throws Exception {
+    //1. 創建數據源(這裡使用c3p0數據庫連接池)
+    ComboPooledDataSource dataSource = new ComboPooledDataSource();
+    dataSource.setDriverClass("com.mysql.cj.jdbc.Driver");
+    dataSource.setJdbcUrl("jdbc:mysql://localhost:3306/spring_demo");
+    dataSource.setUser("root");
+    dataSource.setPassword("1qaz2wsx");
+
+    //2. 創建jdbcTemplate對象
+    JdbcTemplate jdbcTemplate = new JdbcTemplate();
+
+    //3. 設置數據源
+    jdbcTemplate.setDataSource(dataSource);
+
+    //4. 操作數據庫
+    int row = jdbcTemplate.update("insert into account values (?,?)", "James", 5000);
+    System.out.println(row);
+}
+```
+
+#### Spring產生JdbcTemplate對象
+
+可以將`JdbcTemplate`與`DataSource`的創建權交給 Spring，在 Spring 容器內部將數據源 `DataSource`注入到 `JdbcTemplate` 模板對象中。
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd">
+    <bean id="dataSource" class="com.mchange.v2.c3p0.ComboPooledDataSource">
+        <property name="driverClass" value="com.mysql.cj.jdbc.Driver"/>
+        <property name="jdbcUrl" value="jdbc:mysql://localhost:3306/spring_demo"/>
+        <property name="user" value="root"/>
+        <property name="password" value="1qaz2wsx"/>
+    </bean>
+
+    <bean id="jdbcTemplate" class="org.springframework.jdbc.core.JdbcTemplate">
+        <property name="dataSource" ref="dataSource"/>
+    </bean>
+</beans>
+```
+
+上方的資料庫連接訊息也可以抽取為`.properties`文件，在 Spring xml配置文件引入該文件，通過`SPEL`讀取對應數據。
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd http://www.springframework.org/schema/context https://www.springframework.org/schema/context/spring-context.xsd">
+    <!-- 引入外部properties文件 -->
+    <context:property-placeholder location="classpath:jdbc.properties" />
+    <!-- SPEL取值 -->
+    <bean id="dataSource" class="com.mchange.v2.c3p0.ComboPooledDataSource">
+        <property name="driverClass" value="${jdbc.driver}"/>
+        <property name="jdbcUrl" value="${jdbc.url}"/>
+        <property name="user" value="${jdbc.user}"/>
+        <property name="password" value="${jdbc.password}"/>
+    </bean>
+
+    <bean id="jdbcTemplate" class="org.springframework.jdbc.core.JdbcTemplate">
+        <property name="dataSource" ref="dataSource"/>
+    </bean>
+</beans>
+```
+
+#### JdbcTemplate常規操作
+
++ 更新操作：增、刪、改
+
+  針對數據庫的增加、刪除、修改都是調用`JdbcTemplate`物件的`update`方法。
+
+  ```java
+  @RunWith(SpringJUnit4ClassRunner.class)
+  @ContextConfiguration("classpath:applicationContext.xml")
+  public class JdbcTemplateCRUDTest {
+  
+      @Autowired
+      private JdbcTemplate jdbcTemplate;
+  
+      /**
+       * 儲存
+       */
+      @Test
+      public void saveTest() {
+          String sql = "insert into account values(?,?)";
+          int row = jdbcTemplate.update(sql, "Peter", "2999");
+          System.out.println(row);
+      }
+  
+      /**
+       * 更新
+       */
+      @Test
+      public void updateTest() {
+          String sql = "update account set money = ? where name = ?";
+          int row = jdbcTemplate.update(sql, 20000, "Peter");
+          System.out.println(row);
+      }
+  
+      /**
+       * 刪除
+       */
+      @Test
+      public void deleteTest(){
+          String sql = "delete from account where name = ?";
+          int row = jdbcTemplate.update(sql, "Peter");
+          System.out.println(row);
+      }
+  }
+  ```
+
++ 查詢操作
+
+  針對數據庫的查詢是調用`JdbcTemplate`物件的`query`方法。比較常用的方法是：
+
+  + `List<T> query(String sql, RowMapper<T> rowMapper, Object ... args)`
+
+    該方法會將每列封裝為對應物件，並返回存放這些物件的 List。**適合查詢多筆資料時使用**。
+
+    `rowMapper` 為列轉換器，可以選擇自己實現該接口。Spring 也有提供相關實現類供開發者使用，如果對象與欄位名吻合可以使用`BeanPropertyRowMapper`，該轉換器會將每列轉換為對應的物件，**使用時須指定泛型與在構造器指定物件 class。**
+
+    ```java
+    /**
+     * 查詢全部資料
+     */
+    @Test
+    public void queryListTest(){
+        List<Account> list = jdbcTemplate.query("select * from account", new BeanPropertyRowMapper<Account>(Account.class));
+        list.forEach(System.out::println);
+    }
+    ```
+
+  + `T queryForObject(String sql, RowMapper<T> mapper, Object ... args)`
+
+    該方法回將第一列封裝為對應的物件，並返回該物件。**適合查詢單一筆資料時使用**。
+
+     ```java
+    /**
+     * 查詢單筆資料
+     */
+    @Test
+    public void queryOneTest(){
+        String sql = "select * from account where name= ?";
+        Account account = jdbcTemplate.queryForObject(sql, new BeanPropertyRowMapper<>(Account.class),"Peter");
+        System.out.println(account);
+    }
+     ```
+
+  + `T queryForObject(String sql, Class<T> requireType, Object args)`
+
+    該方法將查詢返回的值強轉為指定的類型。**適合查詢返回值為簡單數據類型**。
+
+    ```java
+    /**
+    * 查詢結果為簡單數據類型
+    */
+    @Test
+    public void querySampleTypeTest(){
+        String sql = "select count(*) from account";
+        Integer count = jdbcTemplate.queryForObject(sql, Integer.class);
+        System.out.println(count);
+    }
+    ```
+
+### Spring 事務控制
+
+#### 編程式事務控制
+
+編程式是指使用 Java API 方式進行事務控制。學會手動使用 API 控制事務，才能更好的使用xml配置和註解方式的事務控制。
+
+##### 事務控制相關對象
+
++ `PlatformTransactionManager`
+
+  該接口是 Spring 的事務管理器，裡面提供了常用的事務操作方法。
+
+  | 方法                                                         | 說明               |
+  | ------------------------------------------------------------ | ------------------ |
+  | `TransactionStatus getTransaction(TransactionDefination defination)` | 獲取事務的狀態訊息 |
+  | `void commit(TransactionStatus status)`                      | 提交事務           |
+  | `void rollback(TransactionStatus status)`                    | 回滾事務           |
+
+  > `PlatformTransactionManager` 是接口，不同的 Dao 層技術有不同的實現類。
+  >
+  > 例如：Dao層技術是Jdbc 和 mybatis時，實現類為 `org.springframework.jdbc.datasource.DataSourceTransactionManager`。
+  >
+  > Dao層技術是 hibernate 時，實現類為`org.springframework.orm.hibernate5.HibernateTransactionManager`
+
++ `TransactionDefination` 
+
+  事務的定義訊息對象
+
+  | 方法                         | 說明                                                         |
+  | ---------------------------- | ------------------------------------------------------------ |
+  | `int getIsolationLevel()`    | 獲得事務的隔離級別                                           |
+  | `int getPropagationBehavior` | 獲得事務的傳播行為                                           |
+  | `int getTime()`              | 獲得超時時間<br />默認值是-1，沒有時間限制。如果有，以秒為單位設置。 |
+  | `boolean isReadOnly()`       | 是否只讀。<br />建議查詢時設置為以讀。                       |
+
++ `TransactionStatus`
+
+  接口提供的是事務具體的運行狀態，方法介紹如下：
+
+  | 方法                         | 說明                 |
+  | ---------------------------- | -------------------- |
+  | `boolean hasSavePoint()`     | 事務是否有設置保存點 |
+  | `boolean iSCompleted()`      | 事務是否已完成       |
+  | `boolean isNewTransaction()` | 事務是否是新事務     |
+  | `boolean isRollbackOnly`     | 事務是否回滾         |
+
+  
+
+##### 事務的隔離級別
+
+設置隔離級別，可以解決事務併發產生的問題。如：髒讀、不可重複讀、幻讀。
+
+1. `ISOLATION_DEFAULT` 數據庫默認
+2. `ISOLATION_READ_UNCOMMIT` 讀未提交，髒讀、不可重複讀、幻讀皆無法解決
+3. `ISOLATION_READ_COMMIT` 讀已提交，可以解決髒讀，其他無法解決。
+4. `ISOLATION_REPEATABLE_READ` 可重複讀，可以解決髒讀、不可重複讀，其他無法解決
+5. `ISOLATION_SERIALIZABLE` 序列化，全部都可解決。但是性能最差。
+
+##### 事務的傳播行為
+
+指的是當A業務方法中調用B業務方法，且當A、B業務都有事務控制時，它們會出現重複、統一的問題。事務傳播行為就是為了解決該問題。下面列出可以設定的傳播行為：
+
++ **REQUIRED：如果A當前沒有事務，B就新建一個事務，如果A已經存在事務中，B加入這個事務中。一般的選擇(默認值)。**
++ **SUPPORTS：如果A當前沒有事務，B就以非事務方式運行。如果A已經存在事務，B加入這個事務**。
++ MANDATORY：B加入A當前的事務，如果A當前沒有事務，就拋出異常。
++ REQUEST_NEW：如果A當前以存在事務，B新建一個事務，把A事務掛起。
++ NOT_SUPPORT：B以非事務方式運行，如果A當前存在事務，就把A事務掛起。
++ NEVER：B以非事務方式運行，如果A當前存在事務，拋出異常。
++ NESTED：如果A當前存在事務，則B在嵌套事務內執行。如果A當前沒有事務，則執行REQUIRED類似的操作。
+
+#### 基於XML的聲明式事務控制
+
+Spring 的聲明式事務控制，顧名思義就是採用聲明的方式來處理事務。這裡所說的聲明，就是指在配置文件中聲明。Spring 通過聲明訊息，來主動幫你處理事務，而不需由你主動使用API來控制事務。
+
+聲明式的優點：
+
++ 通過聲明的方式，業務邏輯就可以與事務控制邏輯切分開來。在開發時業務邏輯不會意識到正在事務管理之中，事實上也應該如此。因為事務控制是屬於系統層面的服務，而不是業務邏輯的一部分。
+
++ 如果想改變事務管理的方式，只需更改配置文件
++ 在不需要事務管理時，只要在配置文件上修改一下，即可移除事務管理服務，無須改變代碼重新編譯。
+
+> Spring 事務控制的底層就是通過AOP實現的。
