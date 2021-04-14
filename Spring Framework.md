@@ -1784,7 +1784,7 @@ public class AccountServiceImpl implements AccountService {
 
 將大部分的XML配置都改用註解方式，如果想要完全替代掉XML，需要建立Spring配置類進行以下配置。
 
-當中將不是我們自定義的類通過`@Bean`加入至 Spring 容器中。比較特別的是`@EnableTransactionManager`啟動交易管理，容器內需要有一個以上的平台管理去(`PlatformTransactionManager`實現類)。
+當中將不是我們自定義的類通過`@Bean`加入至 Spring 容器中。比較特別的是`@EnableTransactionManager`啟動交易管理，容器內需要有一個以上的平台管理器(`PlatformTransactionManager`實現類)。
 
 ```java
 //標註該類為Spring配置類
