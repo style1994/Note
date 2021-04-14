@@ -1432,7 +1432,7 @@ public void test1() throws Exception {
   >
   > Dao層技術是 hibernate 時，實現類為`org.springframework.orm.hibernate5.HibernateTransactionManager`
 
-+ `TransactionDefination` 
++ `TransactionDefinition` 
 
   事務的定義訊息對象
 
@@ -1442,6 +1442,8 @@ public void test1() throws Exception {
   | `int getPropagationBehavior` | 獲得事務的傳播行為                                           |
   | `int getTime()`              | 獲得超時時間<br />默認值是-1，沒有時間限制。如果有，以秒為單位設置。 |
   | `boolean isReadOnly()`       | 是否只讀。<br />建議查詢時設置為以讀。                       |
+  | `getTransactionManager()`    | 獲得該交易所指定使用的`transactionManager`<br />當Spring容器內超過兩個交易管理器時需指定 |
+  | `getRollbackFor`             | 獲得當遇到那些錯誤時會執行rollback操作，默認是`RunTimeException`。<br />建議設置為`Exception` |
 
 + `TransactionStatus`
 
@@ -1490,3 +1492,333 @@ Spring 的聲明式事務控制，顧名思義就是採用聲明的方式來處�
 + 在不需要事務管理時，只要在配置文件上修改一下，即可移除事務管理服務，無須改變代碼重新編譯。
 
 > Spring 事務控制的底層就是通過AOP實現的。
+
+##### 基於 Aspectj AOP配置事務操作步驟
+
+1. 導入`aspectjweaver`、`spring-jdbc` 、 `spring-tx` 依賴。`spring-tx`是事務相關 API。
+2. 創建數據表和表對應實體
+3. XML配置文件需引入事務的命名空間 `tx`
+4. XML配置數據源`DataSource`與`JdbcTemplate`
+5. 根據所使用DAO層技術配置對應的`PlatformTransactionManager`的實現類
+6. 配置事務的通知。使用 `<tx:advice>` 標籤。子標籤 `<tx-attribute>` 內部還可以針對各個不同的方法配置若干個`<tx-method>`
+7. 使用AOP配置事務的織入。事務使用標籤 `<aop-advisor>`來配置織入。該標籤與`<aop:aspect>`功能相同，只是大多用來配置事務。
+
+##### 操作範例
+
+AOP配置事務範例。數據庫連接池使用c3p0，數據庫使用mysql。
+
+1. 確認是否導入相關依賴。`spring-context`、`aspectjweaver`、`spring-jdbc`、`spring-tx`、`c3p0`、`mysql-connector-java`
+
+2. 定義數據表與對應實體
+
+   ```sql
+   drop table account;
+   create table account(
+   	name varchar(100),
+       money double
+   );
+   insert into account values('James',5000);
+   insert into account values('Peter',5000);
+   ```
+
+   ```java
+   public class Account {
+       String name;
+       double money;
+   	// 以下省略getter、setter、toString方法
+   }
+   ```
+
+3. 編寫`Dao`、`Service`、`Controller`
+
+   ```java
+   public interface AccountDao {
+   
+       void out(String name, double money);
+   
+       void in(String name, double money);
+   }
+   
+   public class AccountDaoImpl implements AccountDao {
+   
+       private JdbcTemplate jdbcTemplate;
+   
+       public void setJdbcTemplate(JdbcTemplate jdbcTemplate) {
+           this.jdbcTemplate = jdbcTemplate;
+       }
+   
+       /**
+        * 提款
+        * @param name 帳戶
+        * @param money 提款金額
+        */
+       @Override
+       public void out(String name, double money) {
+           jdbcTemplate.update("update account set money = money - ? where name = ?", money, name);
+       }
+   
+       /**
+        * 存款
+        * @param name 帳戶
+        * @param money 存款金額
+        */
+       @Override
+       public void in(String name, double money) {
+           jdbcTemplate.update("update account set money = money + ? where name = ?", money, name);
+   
+       }
+   }
+   ```
+
+   ```java
+   public interface AccountService {
+       void transfer(String origin, String target, double money);
+   }
+   
+   public class AccountServiceImpl implements AccountService {
+   
+       private AccountDao accountDao;
+   
+       public void setAccountDao(AccountDao accountDao){
+           this.accountDao = accountDao;
+       }
+   
+       @Override
+       public void transfer(String origin, String target, double money) {
+           accountDao.out(origin, money);
+           int i = 1/0; // 自殺，看是否有回滾
+           accountDao.in(target, money);
+       }
+   }
+   ```
+
+   ```java
+   public class App {
+       public static void main(String[] args) {
+           ApplicationContext app = new ClassPathXmlApplicationContext("applicationContext.xml");
+           AccountService service = app.getBean(AccountService.class);
+           service.transfer("James", "Peter", 500);
+       }
+   }
+   ```
+
+4. 編寫XML配置
+
+   配置事務管理器的配置必須根據Dao層的技術使用不同的`PlatformTranctiinManager`實現類。`JdbcTemplate`、`Mybatis` 使用的是  `DataSourceTransactionManager`。
+
+   `<tx:advice>`用於配置事務的通知/增強，至少配一個`<tx:method>`，`name`屬性可以使用萬用字元`*`代表`0~N`個字元。例如：update\*、delete\*等等，**否則將沒有方法受到事務管理**。
+
+   有點類似第二次配置的概念。切點表達式斷言了`service`切面類中哪些連接點為切點。而`<tx:method>`是針對各切點方法的`事務定義`。這樣的好處是可以根據切點方法內邏輯做不同的`事務定義`(隔離級別、傳播行為等)。
+
+   ```xml
+   <?xml version="1.0" encoding="UTF-8"?>
+   <beans xmlns="http://www.springframework.org/schema/beans"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns:tx="http://www.springframework.org/schema/tx"
+          xmlns:aop="http://www.springframework.org/schema/aop"
+          xsi:schemaLocation="http://www.springframework.org/schema/beans
+                              http://www.springframework.org/schema/beans/spring-beans.xsd
+                              http://www.springframework.org/schema/tx
+                              http://www.springframework.org/schema/tx/spring-tx.xsd
+                              http://www.springframework.org/schema/aop
+                              https://www.springframework.org/schema/aop/spring-aop.xsd">
+       <!-- 配置c3p0數據源 -->
+       <bean id="dataSource" class="com.mchange.v2.c3p0.ComboPooledDataSource">
+           <property name="driverClass" value="com.mysql.cj.jdbc.Driver"/>
+           <property name="jdbcUrl" value="jdbc:mysql://localhost:3306/spring_demo"/>
+           <property name="user" value="root"/>
+           <property name="password" value="1qaz2wsx"/>
+       </bean>
+       <!-- 配置jdbcTemplate -->
+       <bean id="jdbcTemplate" class="org.springframework.jdbc.core.JdbcTemplate">
+           <property name="dataSource" ref="dataSource"/>
+       </bean>
+       <!-- 配置dao -->
+       <bean id="accountDao" class="dao.impl.AccountDaoImpl">
+           <property name="jdbcTemplate" ref="jdbcTemplate"/>
+       </bean>
+       <!-- 配置service -->
+       <bean id="accountService" class="service.impl.AccountServiceImpl">
+           <property name="accountDao" ref="accountDao"/>
+       </bean>
+   
+       <!-- 配置事務管理器(jdbcTemplate和mybatis適用) -->
+       <bean id="txManager" class="org.springframework.jdbc.datasource.DataSourceTransactionManager">
+           <property name="dataSource" ref="dataSource"/>
+       </bean>
+   
+       <!-- 配置事務通知 -->
+       <tx:advice id="tx" transaction-manager="txManager">
+           <tx:attributes>
+               <!-- 各別設定各切點方法的事務配置 -->
+               <!-- name="*" 匹配所有方法 -->
+               <tx:method name="*" isolation="DEFAULT" propagation="REQUIRED" read-only="false" timeout="-1"/>
+           </tx:attributes>
+       </tx:advice>
+   
+        <!-- aop配置 -->
+       <aop:config>
+           <!-- 織入事務通知/增強 -->
+           <aop:advisor advice-ref="tx" pointcut="execution(* service.impl.*.*(..))"/>
+       </aop:config>
+   </beans>
+   ```
+
+#### 基於註解的事務控制
+
+##### 事務相關註解
+
+| 註解                           | 說明                                                         |
+| ------------------------------ | ------------------------------------------------------------ |
+| `@Transactional`               | 可以應用在類或方法上，使用在類上表示該類中的所有方法都套用該配置，<br />如果類與方法上都有，則採就近原則。<br />該註解可用屬性進行事務定義 |
+| `@EnableTransactionManagement` | 用於Spring配置類上，表示啟用交易管理。**使用時Spring容器內需要有`TransactionManager`的實現類物件。** <br />當Spring容器內存在兩個交易管理器，需要`@Transaction`註解使用`transactionManager`屬性指定使用哪個交易管理器。 |
+
+##### 註解配置事務相關XML標籤
+
+| 標籤                     | 說明                                                         |
+| ------------------------ | ------------------------------------------------------------ |
+| `<tx:annotation-driven>` | 開啟事務的註解驅動。如果缺少此配置，`@Transactional`註解無效。 |
+
+##### 範例
+
+```java
+@Repository("AccountDao")
+public class AccountDaoImpl implements AccountDao {
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+
+    /**
+     * 提款
+     * @param name 帳戶
+     * @param money 提款金額
+     */
+    @Override
+    public void out(String name, double money) {
+        jdbcTemplate.update("update account set money = money - ? where name = ?", money, name);
+    }
+
+    /**
+     * 存款
+     * @param name 帳戶
+     * @param money 存款金額
+     */
+    @Override
+    public void in(String name, double money) {
+        jdbcTemplate.update("update account set money = money + ? where name = ?", money, name);
+
+    }
+}
+```
+
+```java
+@Service("accountService")
+public class AccountServiceImpl implements AccountService {
+
+    @Autowired
+    private AccountDao accountDao;
+
+    @Override
+    public void transfer(String origin, String target, double money) {
+        accountDao.out(origin, money);
+        int i = 1/0;
+        accountDao.in(target, money);
+    }
+}
+```
+
+```java
+@Service("accountService")
+// 配置事務管理
+@Transactional(isolation = Isolation.DEFAULT, timeout = -1, propagation = Propagation.REQUIRED, readOnly = false)
+public class AccountServiceImpl implements AccountService {
+
+    @Autowired
+    private AccountDao accountDao;
+
+    @Override
+    public void transfer(String origin, String target, double money) {
+        accountDao.out(origin, money);
+        int i = 1/0;
+        accountDao.in(target, money);
+    }
+}
+```
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:tx="http://www.springframework.org/schema/tx"
+       xmlns:contex="http://www.springframework.org/schema/context"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+                           http://www.springframework.org/schema/beans/spring-beans.xsd
+                           http://www.springframework.org/schema/tx
+                           http://www.springframework.org/schema/tx/spring-tx.xsd
+                           http://www.springframework.org/schema/context 
+                           https://www.springframework.org/schema/context/spring-context.xsd">
+    <!-- 配置c3p0數據源 -->
+    <bean id="dataSource" class="com.mchange.v2.c3p0.ComboPooledDataSource">
+        <property name="driverClass" value="com.mysql.cj.jdbc.Driver"/>
+        <property name="jdbcUrl" value="jdbc:mysql://localhost:3306/spring_demo"/>
+        <property name="user" value="root"/>
+        <property name="password" value="1qaz2wsx"/>
+    </bean>
+    <!-- 配置jdbcTemplate -->
+    <bean id="jdbcTemplate" class="org.springframework.jdbc.core.JdbcTemplate">
+        <property name="dataSource" ref="dataSource"/>
+    </bean>
+
+    <!-- 配置事務管理器(jdbcTemplate和mybatis適用) -->
+    <bean id="txManager" class="org.springframework.jdbc.datasource.DataSourceTransactionManager">
+        <property name="dataSource" ref="dataSource"/>
+    </bean>
+
+    <!-- 配置組件掃描(必要) -->
+    <contex:component-scan base-package="org.learning"/>
+    <!-- 配置註解驅動(必要) -->
+    <tx:annotation-driven transaction-manager="txManager" />
+</beans>
+```
+
+將大部分的XML配置都改用註解方式，如果想要完全替代掉XML，需要建立Spring配置類進行以下配置。
+
+當中將不是我們自定義的類通過`@Bean`加入至 Spring 容器中。比較特別的是`@EnableTransactionManager`啟動交易管理，容器內需要有一個以上的平台管理去(`PlatformTransactionManager`實現類)。
+
+```java
+//標註該類為Spring配置類
+@Configuration
+//組件掃描
+@ComponentScan("org.learning")
+// 啟用交易管理
+@EnableTransactionManagement
+public class SpringConfiguration {
+
+    @Bean("dataSource")
+    public ComboPooledDataSource getDataSource() throws PropertyVetoException {
+        ComboPooledDataSource dataSource = new ComboPooledDataSource();
+        dataSource.setDriverClass("com.mysql.cj.jdbc.Driver");
+        dataSource.setJdbcUrl("jdbc:mysql://localhost:3306/spring_demo");
+        dataSource.setUser("root");
+        dataSource.setPassword("1qaz2wsx");
+        return dataSource;
+    }
+
+    @Bean("jdbcTemplate")
+    public JdbcTemplate getJdbcTemplate(@Autowired ComboPooledDataSource dataSource){
+        JdbcTemplate jdbcTemplate = new JdbcTemplate();
+        jdbcTemplate.setDataSource(dataSource);
+
+        return jdbcTemplate;
+    }
+
+    @Bean("txManager")
+    public TransactionManager getTransactionManager(@Autowired ComboPooledDataSource dataSource){
+        DataSourceTransactionManager transactionManager = new DataSourceTransactionManager();
+        transactionManager.setDataSource(dataSource);
+        return transactionManager;
+    }
+}
+```
+
