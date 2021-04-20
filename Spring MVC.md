@@ -1201,7 +1201,7 @@ DispatcherServlet 中有幾個引用類型的的屬性，spring-mvc 在工作的
          3. <font color="ff0000">如果參數有註解</font>，解析註解的信息並針對不同註解進行賦值
 
             1. `@ModelAttribute`和`@SessionAttribute`，是兩個特例，它們只是將value屬性值賦值`attrName`，並沒有在這進行賦值。
-            2. 有一些註解也只會解析，不會在這馬上進行賦值，和上方的`@ModeAttribute`和`@SessionAttribute`差不多。
+            2. 有一些註解也只會解析，不會在這馬上進行賦值，例如： `@ModeAttribute`和`@SessionAttribute`。
 
          4. <font color="ff0000">如果參數沒有註解</font>
 
@@ -1219,16 +1219,25 @@ DispatcherServlet 中有幾個引用類型的的屬性，spring-mvc 在工作的
             >
             > 沒註解：attrName為「""」。
 
-         5. 對那些還沒進行複值的進行複值，分類為有註解的參數和梅註解的參數都有，這裡只針某幾種對重點介紹。
+         5. 對那些還沒進行賦值的進行賦值，分類為有註解的參數和沒註解的參數都有，這裡只針某幾種對重點介紹。
 
+            **<font color="ff0000">以下為最重要的邏輯，決定POJO的基礎值</font>**
+            
             1. `paramName != null`的簡單類型，進行request參數值與參數值的綁定(相同名稱)。
-            2. `attrName != null`<font color="ff0000">(`@SessionAttribute`、`@ModuleAttribute`、沒註解的POJO都歸屬於這邊) </font>
-               1. 解析ModelAttribute(只是方法名稱翻譯)，並不單單處理與`@ModelAttribute`相關，以業務邏輯來看的話，是解析 attrName
+            2. `attrName != null`<font color="ff0000">(`@SessionAttribute`、`@ModuleAttribute`、沒註解的POJO都歸屬於這邊，還有一些其他的註解) </font>
+               
+               1. 解析ModelAttribute(只是方法名稱翻譯)，並不單單處理與`@ModelAttribute`相關，以業務邏輯來看的話，是解析 attrName 取得 key 值，決定參數的基礎值是要使用哪種方式取得。
+               
                2. 如果 attrName 為空，使用類型名稱作為key值(小寫)
+               
                3. 判斷`Model`(隱含模型)中是否有與key值對應的數據，如果有參數綁定該數據
-               4. else判斷 session scope 中是否有與 key值相對應的數據，如果有參數綁定該數據
+               
+               4. 判斷 `session` 域中是否有與key值相同的鍵，如果有從 `session` 域中取出key值對應的數據，並賦值給參數，<font color="ff0000">如果session數據值為 `null` 拋出異常。</font>
+               
+                  > 當你使用 @SessionAttribute"s" 註解修飾你的控制器類，value 屬性所指定值，就是**聲明 session 域中將會有這些屬性**，可是這很可能觸發上面那段邏輯的異常。(聲明後但是隱含模型和session域都沒有)。這也是<font color="ff0000">**不要使用@SessionAttribute"s" 註解的原因**</font>，如果要設置session屬性，請使用原生API。
+               
                5. 如果在 `Model`和 `Session`中都沒有，使用反射創建一個新的自定義類物件。
-            3. 使用數據綁定將請求參數中的值賦值給物件屬性。
+            3. 使用數據綁定氣將請求參數值賦綁定物件屬性(同名)。
 
    2. 取得`@ModelAttribute`的 value 值，如果沒有設定，則已方法返回值作為其值
 
