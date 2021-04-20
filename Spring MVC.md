@@ -512,7 +512,7 @@ REST 是 Representational State Transfer 的縮寫。可譯為「具象狀態傳
 
 #### Spring 對 REST 的支持
 
-在頁面上不通過 Ajax，只能發送`PUT`、`POST`請求。SpringMVC 中有一個 `HiddenHttpMethodFilter`，它可以把普通的請求轉化為規定形式的請求。
+在頁面上不通過 Ajax，只能發送`PUT`、`POST`請求。spring-mvc 提供 `HiddenHttpMethodFilter`，它可以把POST請求轉化為其他HTTP請求方式。
 
 操作步驟：
 
@@ -539,19 +539,19 @@ REST 是 Representational State Transfer 的縮寫。可譯為「具象狀態傳
 
 #### Tomcat8以上JSP無法接受PUT、DELETE解決方式
 
-當web容器為Tomcat且版本為8以上，當在使用REST風格設計API時，會發現通`HiddenHttpMethodFilter`過濾器可以讓後端接收到`PUT`、`DELETE`，但是處理完請求還是使用`PUT`、`DELETE`返回轉發到JSP頁面時，Tomcat就不幹了。
+當web容器為Tomcat 8 以上，設計RESTful API 時，會發現通`HiddenHttpMethodFilter` 過濾器轉換後確實可以讓後端控制器方法接收到 `PUT`、`DELETE` 方式請求，但是處理完請求還是會使用 `PUT`、`DELETE` 方式轉發到JSP頁面時，Tomcat 會因為無法處理 `PUT`、`DELETE` 而出現異常。
 
-有4種方法解決：
+目前有4種方法解決：
 
 1. 使用 Tomcat7：沒有實質解決問題
 
-2. 設置轉發的目標頁面為錯誤頁面：錯誤訊息會被封裝在JSP內置物件error中，所以用戶看不到轉發錯誤訊息。還是出現錯誤了，沒有根本解決問題。
+2. 設置目標頁面為錯誤頁面：錯誤訊息會被封裝在JSP內置物件error中，所以看不到轉發錯誤訊息。還是出現錯誤了，沒有根本解決問題。
 
    ``` jsp
    <%@ page isErrorPage="true" %>
    ```
 
-3. 使用重定向(Redirect)：可以在控制器方法的字串返回值加上前綴`redirect:`，指定跳轉方式為重定向。
+3. 使用重定向(Redirect)：可以在控制器方法的字串返回值加上前綴 `redirect:`，指定使用重定向。
 
 4. 使用`@ResponseBody`：在負責處理`PUT`、`DELETE`請求的控制器方法加上該註解，但只能返回方法返回值，無法進行轉發。
 
@@ -559,13 +559,13 @@ REST 是 Representational State Transfer 的縮寫。可譯為「具象狀態傳
 
 #### 處理請求參數
 
-假設用戶請求的URL是`http:localhost:8080/springmvc/books?name=Java8`。從URL可以得知有一個請求參數 username，其值為 Java8。
+假設請求的 URL `http:localhost:8080/springmvc/books?name=Java8`。從URL得知 username 請求參數 ，其值為 Java8。
 
 獲取請求參數有以下方式：
 
-1. SpringMVC 默認的方式：
+1. spring-mvc 默認的方式：
 
-   直接在控制器的方法形參加上同名的參數。當沒有該請求參數時，方法形參值為`null`。
+   直接在控制器的方法加上與請求參數同名的方法參數。當沒有該請求參數時，方法參數值為 `null`。
 
    ```java
    @RequestMapping(value = "/books", method = RequestMethod.POST)
@@ -578,7 +578,7 @@ REST 是 Representational State Transfer 的縮寫。可譯為「具象狀態傳
 
 2. `@RequestParam`註解
 
-   通過`@RequestParam`註解，使用在方法形參上，並在註解的`value`屬性指定請求參數的名稱。該方式可以讓請求參數與方法形參不同名稱。
+   使用 `@RequestParam` 註解在方法形參上，並在註解的`value`屬性指定請求參數的名稱。作用會獲取對應的請求參數並注入到註解修飾的方法參數上。該方式使請求參數與方法形參不同名稱。
 
    `@RequestParam`屬性：
 
@@ -588,24 +588,24 @@ REST 是 Representational State Transfer 的縮寫。可譯為「具象狀態傳
 
    ``` java
    /**
-        * 註解可以讓請求參數與方法形參不同名稱，且可以指定默認值
-        */
-       @RequestMapping(value = "/books", method = RequestMethod.POST)
-       public String insertBook(
-               @RequestParam( value = "username", required = false, defaultValue = "Peter") String name) {
-           System.out.println("username: " + name);
-           System.out.println("insertBook working");
-           return "/success.jsp";
-       }
+    * 註解可以讓請求參數與方法形參不同名稱，且可以指定默認值
+    */
+   @RequestMapping(value = "/books", method = RequestMethod.POST)
+   public String insertBook(
+       @RequestParam( value = "username", required = false, defaultValue = "Peter") String name) {
+       System.out.println("username: " + name);
+       System.out.println("insertBook working");
+       return "/success.jsp";
+   }
    ```
 
-   > 需要注意 required 默認是 true，所以在加入該註解沒有去修改 required 屬性值，當沒傳該參數時會出現異常
+   > 當 required 默認是 true，且沒有該請求參數時，會出現異常
 
 #### 處理請求參數
 
 + `RequestHeader`
 
-  + 作用：用於獲取請求頭Key值，用於取代之前的操作：`request.getHeader("User-Agent")`。
+  + 作用：用於獲取請求頭值，可以取代之前的操作：`request.getHeader("User-Agent")`。
 
   + 使用位置：控制器方法形參
 
@@ -613,7 +613,7 @@ REST 是 Representational State Transfer 的縮寫。可譯為「具象狀態傳
 
     + value：指定請求參數的值
     + required：指定請求頭是否必須存在，默認值為 `true`。
-    + defaultValue：當沒有該請求 header 時，設置其默認值。默認值為`null`。
+    + defaultValue：當沒有該請求 header 時，設置其默認值。預設默認值為`null`。
 
   + 範例：
 
@@ -635,14 +635,14 @@ REST 是 Representational State Transfer 的縮寫。可譯為「具象狀態傳
 
 + `@SessionAttrubute`
 
-  + 作用：獲取 session 域中的屬性值。
+  + 作用：獲取 `session` 域中存放的屬性值。
 
   + 使用位置：方法形參
 
   + 屬性：
 
     + value：指定 session 域中屬性的 key 值
-    + required：session 屬性是否為必須存在，默認值為`true`。
+    + required：session 屬性是否為必須存在，預設默認值為`true`。
 
   + 範例：
 
@@ -658,9 +658,10 @@ REST 是 Representational State Transfer 的縮寫。可譯為「具象狀態傳
 
 + `@CookieValue`
 
-  + 作用：獲取請求 cookie值，用於取代以前獲取 cookie 操作。
+  + 作用：獲取請求 cookie 值。
 
     ``` java
+    // Servlet 獲取 cookie 操作
     Cookie[] cookies = request.getCookies();
     for(Cookie c : cookies){
         if(c.getName().equals("JSESSIONID")){
@@ -668,17 +669,20 @@ REST 是 Representational State Transfer 的縮寫。可譯為「具象狀態傳
         }
     }
     ```
-
-  + 使用位置：方法形參
-
-  + 屬性：
-
+  ```
+  
+  ```
+  
++ 使用位置：方法形參
+  
++ 屬性：
+  
     + value：請求 cookie 的 key。
-    + required：請求cookie是否為必須，默認值為`true`。
-    + defaultValue：當沒有該請求 cookie 時，設置其默認值。默認值為`null`。
-
-  + 範例：
-
+    + required：cookie 是否為必須，默認值為`true`。
+  + defaultValue：當沒有該 cookie 時，給定其默認值。預設默認值為`null`。
+  
++ 範例：
+  
     ```java
     @RequestMapping(value = "/books/{id}", method = RequestMethod.PUT)
     @ResponseBody
@@ -698,9 +702,11 @@ REST 是 Representational State Transfer 的縮寫。可譯為「具象狀態傳
 
 #### 封裝請求參數為POJO對象
 
-當請求參數少時，使用`@requestParam`非常方便，可是當請求參數很多時，方法的形參就會非常多，這時可能會需要將請求參數分類並封裝到對應的 Java 對象中。SpringMVC 可以自動封裝請求參數為相應的對象，**它會嘗試映射同名的請求參數值到Java對象中同名的屬性中**，沒有比對上的Java屬性值為`null`。
+請求參數較少時，使用 `@requestParam` 非常方便；當請求參數數量非常多時，使用 `@requestParam` 來一個個獲取請求參數，不只麻煩，還會讓方法參數過多。常見的處理方式就是將請求參數歸類並封裝為POJO物件。
 
-假設有以下表單需要提交：
+spring-mvc 有自動封裝請求參數為相應的對象功能，**它會嘗試映射同名的請求參數值到Java對象中同名的屬性中**，而那些沒有映射到的屬性就維持其原值。
+
+假設有以下表單要提交：
 
 ``` html
 <form method="post" action="/books">
@@ -716,7 +722,7 @@ REST 是 Representational State Transfer 的縮寫。可譯為「具象狀態傳
 </form>
 ```
 
-注意表單中地址訊息中郵遞區號與城市的`name`，如果地址的訊息是封裝在另一個Java物件中，且作為Book物件內的屬性`address`，可以通過`.`來表示物件屬性的屬性，這樣SpringMVC就能自動幫你封裝。
+注意表單中地址訊息中郵遞區號與城市`input`標籤的`name`屬性，如果地址的訊息是在另一個 POJO 物件中，且作為表單對應物件內的屬性 (`address`)，此時可以**通過 `.` 來表示屬性的屬性**， spring-mvc 能識別並自動封裝。
 
 ```java
 public class Address {
@@ -750,9 +756,11 @@ public String insertBook(Book book) {
 
 ### 原生API支持
 
-在Servlet中，我們通常可以直接透過`HttpServletRequest`和`HttpServletResponse`直接或間接獲得自己想要的訊息，設置域對象屬性、SESSION、COOKIE等操作，SpringMVC 也提供對**部分**原生API的支持，你只要將原生API 對象定義為方法形參，SpringMVC就會在呼叫時自動傳入。
+Servlet 中，都是直接透過 `HttpServletRequest` 和 `HttpServletResponse` 物件獲得的請求訊息、進行請求的響應操作。
 
-SpringMVC支持的原生API：
+spring-mvc 中提供對**部分**原生 API 的支持，只要將原生 API 對象定義為方法形參，spring-mvc 在呼叫控制器方法時會傳入。
+
+spring-mvc 所支持的原生API：
 
 + HttpServletRequest
 + HttpServletResponse
@@ -775,17 +783,17 @@ public String test01(HttpServletRequest req, HttpSession session){
 
 ### 亂碼問題解決
 
-回顧一下在 Servlet 時所學到的解決亂碼的方式，亂碼可以分為以下：
+回顧在 Servlet 時所學到的解決亂碼的方式，亂碼可以分為兩大類：
 
 + 請求亂碼
 
-  + GET請求
+  + `GET` 請求
 
-    解決方式：找到 tomcat 的`server.xml`設定文件，在8080端口處設置 `URLENCODEING="UTF-8"`
+    解決方式：透過 tomcat 的 `server.xml` 設定文件，在8080端口處設置 `URLENCODEING="UTF-8"`
 
-    > 高版本Tomcat已經內置設定 URLENCODEING 為 UTF-8
+    > 高版本 Tomcat 內置設定 URLENCODEING 為 UTF-8
 
-  + POST請求
+  + `POST` 請求
 
     解決方式：`request.setCharacterEncoding("UTF-8")`
 
@@ -793,9 +801,9 @@ public String test01(HttpServletRequest req, HttpSession session){
 
   解決方式：`response.setContentType("text/html;charset=UTF-8")` 或 `response.setCharacterEncoding("UTF-8")`
 
-在 Servlet 中，通常會將處理編碼問題寫成一個 Filter 來統一做處理，SpringMVC 也有提供一個編碼處理的 Filter實現類`CharacterEncodingFilter`，只要web.xml配置好，就能夠解決編碼問題。
+Servlet 中，會將處理編碼問題使用 Filter 統一做處理，spring-mvc 也提供編碼處理的 `CharacterEncodingFilter`。
 
-`CharacterEncodingFilter`屬性：
+`CharacterEncodingFilter` 重要屬性：
 
 + String encoding：編碼格式
 + boolean forceRequestEncoding：是否設置請求編碼格式，默認值為`false`。
@@ -835,7 +843,7 @@ public String test01(HttpServletRequest req, HttpSession session){
 </filter-mapping>
 ```
 
-> 需要注意解決中文亂碼的Filter一定要放到所有Filter配置的最前面。
+> 解決編碼的 Filter 必須配置到其他 Filter 最前面。
 
 ### 進階組件掃描
 
@@ -865,29 +873,32 @@ spring-mvc 響應數據的方式非常多，除了在原生API章節中直接操
 + 頁面跳轉
   + 方法返回視圖名
   
-    > 視圖名會與視圖解析器中的前後綴拼串成一個完整的頁面路徑
+    > 視圖名會與視圖解析器中的前後綴拼成一個完整的頁面路徑
 + 傳回數據
+  
   + 控制器方法傳入Map、Model、Model對象
 
 ##### 頁面跳轉-方法返回視圖名
 
-此種方式會將返回的字符串與視圖解析器`ViewResolver`的前後綴拼接後跳轉。亦可以通過指定`foward:`進行轉發或`redirect:`進行重定向。
+視圖名會與與視圖解析器 `ViewResolver` 的前後綴拼串成完整頁面路徑，spring-mvc 使用頁面路徑進行跳轉。亦可以指定跳轉的方式，在頁面路徑最前面加上 `foward:` 或 `redirect:` 字串進行轉發或重定向。
 
-配置視圖解析器的前後綴為，那麼方法返回字串值`index`。返回值與前後綴拼接起來為 `/WEB-INF/index.jsp`，最後將轉發到該視圖。
+範例：控制器方法返回視圖名為 `index`。視圖名稱和配置前後綴拼接起來為 `/WEB-INF/index.jsp`。
 
 ```xml
 <property name="prefix" value="/WEB-INF/jsp/" />
 <property name="suffix value=".jsp" />
 ```
 
-SpringMVC 默認的跳轉方式為`forward`，以下範例可以指定跳轉方式：
+可以在 spring-mvc 配置視圖解析器 bean，預設的視圖解析器是 `org.springframework.web.servlet.view.InternalResourceViewResolver`，spring-mvc 各預設組件都可以從 `spring-webmvc` 依賴中的 `org.springframework.web.servlet` 包下的 <font color="ff0000">DispatcherServlet.properties</font> 文件找到
+
+spring-mvc 默認跳轉方式為 `forward`。範例展示如何指定跳轉方式：
 
 + 轉發：`forward:/index.jsp`
 + 重定向：`redirect:/index.jsp`
 
 #### 傳回數據
 
-在控制器方法形參中指定傳入`Map`、`Model`、`ModelMap`，然後通過往這些物件添加鍵值對或屬性方式，spring-mvc 會將這些物件中的數據放入到`request`域中。
+控制器方法中指定傳入`Map`、`Model`、`ModelMap` 參數，操作物件進行添加鍵值對或屬性方式，spring-mvc 會將添加的數據設置為 `request` 域的屬性。
 
 ```java
 /**
@@ -923,7 +934,7 @@ public String test03(ModelMap modelMap){
 
 #### Map、Model、ModelMap的關係
 
-查看三者的 class 可以發現 spring-mvc 都是傳入相同的 `BindingAwareModelMap` 對象
+查看三者的 class 可以發現 spring-mvc 都是傳入同一個 `BindingAwareModelMap` 對象。spring-mvc 只是將相同的物件以多態的方式賦值給不同的變數。
 
 ```java
 /**
@@ -945,7 +956,7 @@ public String test04(Map<String, Object> map, Model model, ModelMap modelMap){
 }
 ```
 
-它們三者之間的關係如下：(i)為interface、(c)為class，階層為繼承關係
+三者之間的關係如下：(i)為interface、(c)為class，階層為繼承關係
 
 + Map(i)
   + LinkedHashMap(c)
@@ -954,19 +965,20 @@ public String test04(Map<String, Object> map, Model model, ModelMap modelMap){
         + BindingAwareModelMap(c)
 + Model(i)
 
-#### 頁面跳轉及傳回數據 - 返回ModelAndView
+#### 頁面跳轉及傳回數據 - 返回 ModelAndView 對象
 
-`ModeAndView` 顧名思義，就是由Mode(模型)和View(視圖)組成。模型用來封裝數據，視圖用來展示數據。常用得方法如下：
+`ModeAndView` 顧名思義，由Mode(模型)和View(視圖)組成。模型保存數據，視圖展示數據。
 
-+ setViewName(String name) 設置視圖名稱，與頁面跳轉時回傳字符串一樣效果。
-+ addObject(String attributeName, Object attributeValue)  設置屬性至`request`域中
+常用得方法如下：
+
++ setViewName(String name) 設置視圖名，與控制器方法直接回傳視圖名相同效果。
++ addObject(String attributeName, Object attributeValue)  設置`Model`中保存的數據為 `request` 域中屬性
 
 ##### 範例一：手動創建 ModelAndView 對象
 
 ```java
 /**
  * 頁面跳轉 - 返回ModeAndView方式
- *
  */
 @RequestMapping("/delete")
 public ModelAndView doDelete(){
@@ -980,33 +992,17 @@ public ModelAndView doDelete(){
 }
 ```
 
-```jsp
-<%@ page contentType="text/html;charset=UTF-8" language="java" %>
-<html>
-<head>
-    <title>Hello</title>
-</head>
-<body>
-    <h1>Hello SpringMVC</h1>
-    <h2>request ${requestScope.get("username")}</h2>
-    <h2>session ${sessionScope.get("username")}</h2>
-    <h2>application ${applicationScope.get("username")}</h2>
-    <h2>page ${pageScope.get("username")}</h2>
-</body>
-</html>
-```
-
-##### 範例二：由 SpringMVC 傳入ModelAndView 對象
-
-> 將ModelAndView宣告為方法的參數，SpringMVC 在調用該方法時，發現方法需要ModelAndView對象，就會幫創建並注入該對象
+##### 範例二：方法傳入ModelAndView 對象
 
 ```java
 /**
- * 由Spring mvc 幫你注入 ModelAndView 對象
+ * 方法傳入ModelAndView 對象
  */
 @RequestMapping("/update")
 public ModelAndView doUpdate(ModelAndView modelAndView){
+    // 設置Model數據
     modelAndView.addObject("username","Tommy");
+    // 設置視圖名
     modelAndView.setViewName("/success.jsp");
     return modelAndView;
 }
@@ -1014,13 +1010,13 @@ public ModelAndView doUpdate(ModelAndView modelAndView){
 
 #### SESSION 域中帶入數據
 
-上面都是將數據放入到 `request` 域中的方法，spring-mvc 也提供放入 `session` 域中的方法，註解使用上沒有這麼的直覺。**<font color="ff0000">建議直接使用原生API方式</font>**。
+spring-mvc 也提供放入 `session` 域中的方法，註解使用上沒有這麼的直覺。**<font color="ff0000">建議直接使用原生API方式</font>**。
 
 + `@SessionAttributes`
 
-  + 作用：可以讓把在 `request` 域中的數據(BindingAwareModelMap、ModelAndView)也放一分到 `session` 域中。
+  + 作用：將欲存放在 `request` 域中的模型數據(BindingAwareModelMap、ModelAndView)也存放一份至 `session` 域中。
 
-  + 使用位置：類上
+  + 使用位置：控制器類
 
   + 屬性：
 
@@ -1043,3 +1039,202 @@ public ModelAndView doUpdate(ModelAndView modelAndView){
     ```
 
     > @SessionAttribute 和 @SessionAttribute<font color="ffoooo">s</font> 是兩個不同的註解，請不要搞混
+
+#### @ModelAttribute 
+
+`@ModelAttribute` 註釋可以為模型添加數據。`@ModelAttribute` 通常是和 `@RequestMapping` 一起配合使用，`@ModelAttribute` 和 `@RequestMapping` 註釋位置的不同，其作用也有所差異。
+
+在執行控制器類下的被 `@RequestMapping` 註解標註的方法前，spring-mvc 會依次執行被 `@ModelAttribute` 標註的方法。範例：當 login 請求到來時，會先呼叫 preProcess 方法，在呼叫 doLogin 方法。
+
+```java
+@RequestMapping("/login")
+public String doLogin(){
+    return "/success.jsp";
+}
+
+@ModelAttribute
+public void preProcess(){
+    System.out.println("Welcome ...")
+}
+```
+
+
+
+`@ModelAttribute`註解標註的方法返回值會被存放在`Model`中，註解的 value 屬性設置方法返回值在 `Model` 的 key 值。沒有指定時以返回值類型名稱為 key (駝峰命名方式)。
+
+範例：在執行 doLogin 方法前，執行 preProcess 方法，該方法讀取請求參數 username 和 password 值，並將其封裝為 User 物件，存放在 `Model `中，key 值為 `currentUser`。
+
+```java
+@RequestMapping("/login")
+public String doLogin(){
+    return "/success.jsp";
+}
+
+// 如果沒有指定 value，那該例子的 key 為 user
+@ModelAttribute("currentUser")
+public User preProcess(@RequestParam("username") username, @RequestParam("password") password){
+    System.out.println("Welcome " + username);
+    User user = new User(username, password);
+    return user;
+}
+// 或是使用這種方式指定 key 值，效果與上面方法一致
+@ModelAttribute
+public void preProcess(@RequestParam("username") username, @RequestParam("password") password, Model model){
+    System.out.println("Welcome " + username);
+    User user = new User(username, password);
+    model.addAttribute("current-user", user);
+}
+```
+
+使用在方法形參上的 `@ModelAttribute` 註解的作用就是獲取 `Model` 中存放的數據。
+
+1. 首先會決定到`Model`中取得數據的key值，如果`@ModelAttribute`有指定value值，key使用value，如果沒有指定value，則以參數的類型名稱作為 key(小寫開頭)。
+2. 使用key值到`Model`(隱含模型)中獲取數據，如果有數據，則將該數據賦值給參數；如果沒有，則創建一個新的物件賦值給該參數。
+
+```java
+// 從Model中有 "currentUser"，所以重新創建User對象，而是使用 "currentUser" 進行請求參數的封裝
+@RequestMapping("/login")
+public String doLogin(@ModelAttrubute("currentUser") User user){
+    System.out.printf("welcome %s", user.getUsername());
+    return "/success.jsp";
+}
+
+// 如果沒有指定 value，那該例子的 key 為 user
+@ModelAttribute("currentUser")
+public User preProcess(@RequestParam("username") username, @RequestParam("password") password){
+    User user = new User(username, password);
+    return user;
+}
+```
+
+如果 `Model` 中不存在指定 key 值的物件，那麼 spring-mvc 會使用原本的方式重新創建物件，並封裝。只是最後它還會將該物件放入到 `Model ` 中，key 值為 value 值。
+
+```java
+// Model中沒有"currentUser"，創建User並使用它來封裝請求參數，最後以 "currentUser"字串為key，將該物件保存在Model中
+@RequestMapping("/login")
+public String doLogin(@ModelAttrubute("currentUser") User user){
+    System.out.printf("welcome %s", user.getUsername());
+    return "/success.jsp";
+}
+
+//然後可以在JSP頁面取值
+<h1>Hello ${currentUser.name}<h1>
+```
+
+`@RequestMapping` 和 `@ModelAttribute` 同時註釋同一個方法。
+
+此時該方法的返回值不在表示視圖名，取而代之的是 `@RequestMapping` 的value 成為視圖名。方法的返回值則變成存放在 `Model` 中的數據，`@ModelAttribute` 的 value 值則為該數據的 key。
+
+```java
+// 返回的視圖名稱是 login
+@RequestMapping("/login")
+@ModelAttrubute("currenUser")
+public User doLogin(@RequestParam("username") username, @RequestParam("password") password){
+    User user = new User(username, password);
+    return user;
+}
+```
+
+`@RequestMapping` 所修飾的方法返回值上使用 `@ModelAttribute `修飾，此時方法返回值不再表示視圖名，取而代之的是 `@RequestMapping` 的value 成為視圖名。方法的返回值則變成存放在 `Model` 中的數據，`@ModelAttribute` 的 value 值則為該數據的 key。
+
+```java
+// 返回的視圖名稱是 login
+@RequestMapping("/login")
+public @ModelAttrubute("currenUser")User doLogin(@RequestParam("username") username, @RequestParam("password") password){
+    User user = new User(username, password);
+    return user;
+}
+```
+
+總結：`@ModelAttribute` 適合為其它 `@RequestMapping` 修飾的方法在 `request` 域中設置共用的數據，這樣就不必在每個控制器方法中重複書寫在`Model`設置共用數據的操作。
+
+### 源碼分析
+
+#### doDispatcher()方法處理流程
+
+1. getHandler()：根據當前請求地址找到能處理這個請求的目標處理器類(處理器)
+2. getHandlerAdapter()：根據當前處理器類獲取到能執行這個處理器方法的適配器。
+3. 使用上步驟獲取的適配器(AnnotationMethodHandlerAdapter)執行目標方法
+4. 目標方法執行後會返回一個ModeAndView對象
+5. 根據ModeAndView的信息轉發到具體的頁面，並可以在域中取出ModelAndView中的模型數據
+
+#### spring-mvc 9大組件
+
+DispatcherServlet 中有幾個引用類型的的屬性，spring-mvc 在工作的時候，關鍵位置都是由這些組建完成的。
+
+**共通點：9大組件都是接口，制定規範。**
+
++ MultipartResolver：文件上傳解析器
++ LocaleResolver：區域訊息解析器和國際化有關
++ ThemeResolver：主題解析器，強大的主題效果更換
++ HandlerMapping：映射器
++ HandlerAdapter：適配器
++ HandlerExceptionResolver：異常解析器
++ RequestToViewNameTranslator：當方法沒有返回值時，將請求URL轉換為視圖名
++ FlashMapManager：spring-mvc中允許redirect攜帶數據的功能
++ ViewResolver：視圖解析器
+
+9大組件初始化方法： initStrategies
+
+組件的初始化：去IOC容器中找這個組件，如果沒有就使用默認配置。**有些組件是使用類型找的，有些則是使用id去找得。**
+
+#### 如何確定目標方法每一個參數的值
+
+思路：
+
+1. 創建**隱含模型**(`BindingAwareModelMap`)，用於最後將裡面的數據時放到 `request` 域中
+
+2. 找到所有`@ModelAttribute`註解標註的方法，遍歷解析
+
+   1. 確定`@ModelAttribute`標註標註方法的參數值
+
+      1. 取得目標方法每一個參數的類型
+
+      2. 創建一個與目標方法參數相同長度的數組 `args`，用來保存每一個參數的值
+
+      3. 遍歷 `arg` 數組
+
+         1. 解析參數，獲得參數信息
+
+         2. 取得目標方法參數上標註的註解
+
+         3. <font color="ff0000">如果參數有註解</font>，解析註解的信息並針對不同註解進行賦值
+
+            1. `@ModelAttribute`和`@SessionAttribute`，是兩個特例，它們只是將value屬性值賦值`attrName`，並沒有在這進行賦值。
+            2. 有一些註解也只會解析，不會在這馬上進行賦值，和上方的`@ModeAttribute`和`@SessionAttribute`差不多。
+
+         4. <font color="ff0000">如果參數沒有註解</font>
+
+            1. `resolveCommonArgument`方法確認是否為普通參數，參數進行賦值。(普通參數就是指Servlet原生API)
+            2. 判斷參數是否以解析，如果已解析就為參數進行賦值
+            3. 判斷是否有默認值，如果有就為參數進行賦值
+            4. 判斷是參數類型是否為`Model`或`Map`類型或旗下類型，如果是將**隱含模型**引用賦值給參數
+            5. 判斷是否相容其它類型，是的話參數進行複值
+            6. 判斷是否為簡單數據類型，如: Integer、String等，是的話賦值`paramName`變數為「""」。
+            7. 都不符合上述判斷，賦值`attrName`為「""」。
+
+            > 自定義類型，可以分為兩種：標註解(`@ModelAttribue`或`@SessionAttribute`)、沒標註解。
+            >
+            > 有註解：attrName為註解的value值。
+            >
+            > 沒註解：attrName為「""」。
+
+         5. 對那些還沒進行複值的進行複值，分類為有註解的參數和梅註解的參數都有，這裡只針某幾種對重點介紹。
+
+            1. `paramName != null`的簡單類型，進行request參數值與參數值的綁定(相同名稱)。
+            2. `attrName != null`<font color="ff0000">(`@SessionAttribute`、`@ModuleAttribute`、沒註解的POJO都歸屬於這邊) </font>
+               1. 解析ModelAttribute(只是方法名稱翻譯)，並不單單處理與`@ModelAttribute`相關，以業務邏輯來看的話，是解析 attrName
+               2. 如果 attrName 為空，使用類型名稱作為key值(小寫)
+               3. 判斷`Model`(隱含模型)中是否有與key值對應的數據，如果有參數綁定該數據
+               4. else判斷 session scope 中是否有與 key值相對應的數據，如果有參數綁定該數據
+               5. 如果在 `Model`和 `Session`中都沒有，使用反射創建一個新的自定義類物件。
+            3. 使用數據綁定將請求參數中的值賦值給物件屬性。
+
+   2. 取得`@ModelAttribute`的 value 值，如果沒有設定，則已方法返回值作為其值
+
+   3. 執行`@ModelAttribute`註解標註的方法
+
+   4. 隱含模型保存`@ModelAttribute`方法返回值，key值就是上步驟解析出的 value 值。
+
+3. 找到目標方法，解析並執行(解析步驟與上面解析`@ModleAttribute`一樣)
+
