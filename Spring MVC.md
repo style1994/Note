@@ -878,9 +878,9 @@ spring-mvc 響應數據的方式非常多，除了在原生API章節中直接操
   
   + 控制器方法傳入Map、Model、Model對象
 
-##### 頁面跳轉-方法返回視圖名
+#### 頁面跳轉-方法返回視圖名
 
-視圖名會與與視圖解析器 `ViewResolver` 的前後綴拼串成完整頁面路徑，spring-mvc 使用頁面路徑進行跳轉。亦可以指定跳轉的方式，在頁面路徑最前面加上 `foward:` 或 `redirect:` 字串進行轉發或重定向。
+視圖名會與與視圖解析器 `ViewResolver` 中的前後綴拼串成完整頁面路徑，spring-mvc 使用頁面路徑進行跳轉。
 
 範例：控制器方法返回視圖名為 `index`。視圖名稱和配置前後綴拼接起來為 `/WEB-INF/index.jsp`。
 
@@ -890,11 +890,6 @@ spring-mvc 響應數據的方式非常多，除了在原生API章節中直接操
 ```
 
 可以在 spring-mvc 配置視圖解析器 bean，預設的視圖解析器是 `org.springframework.web.servlet.view.InternalResourceViewResolver`，spring-mvc 各預設組件都可以從 `spring-webmvc` 依賴中的 `org.springframework.web.servlet` 包下的 <font color="ff0000">DispatcherServlet.properties</font> 文件找到
-
-spring-mvc 默認跳轉方式為 `forward`。範例展示如何指定跳轉方式：
-
-+ 轉發：`forward:/index.jsp`
-+ 重定向：`redirect:/index.jsp`
 
 #### 傳回數據
 
@@ -1147,6 +1142,341 @@ public @ModelAttrubute("currenUser")User doLogin(@RequestParam("username") usern
 ```
 
 總結：`@ModelAttribute` 適合為其它 `@RequestMapping` 修飾的方法在 `request` 域中設置共用的數據，這樣就不必在每個控制器方法中重複書寫在`Model`設置共用數據的操作。
+
+### 視圖解析器-進階
+
+方法返回值為視圖名時，視圖解析器就跟將該視圖名拚上前後綴組成完整的頁面路徑。
+
+還可以透過`forward:`和`redirect:`的形式指定頁面跳轉的方式，<font color="ff0000">當顯示的指定跳轉的方式時，視圖解析器不會拼上前後綴，而是直接使用。</font>
+
+Servlet 能將請求轉發(forward)到另一個 Servlet 做處理，`forward:` 後面只要接上對應請求路徑，也可以做到相同的效果。
+
+Servlet 在進行重定向(redirect)請求時，`/` 代表的是web應用所在伺服器，因為重定向操作是由瀏覽器進行的，它只認識伺服器，所以你會需要加上web應用的名稱，例如：`reponse.sentRedirect("/spring-mvc/test01")`。<font color="ff0000">使用 `redirect:` 指定轉發方視時，spring-mvc 會自動幫你帶上web應用的名稱，所以`/`表示的是當前web應用的根目錄</font>，例如：`"redirect:/test01"` 可以達到與上面Servlet重定向一樣的效果。
+
+範例：
+
+```java
+// 指定跳轉到 webContent資料夾下的success.jsp
+@RequestMapping("/test01")
+public String test01(){
+    return "forward:/success.jsp"
+}
+
+// 還可以處理完後，在forward到另一個控制器方法
+// 先轉發到/test01，最後到 success.jsp 頁面
+@RequestMapping("/test02")
+public String test02(){
+    return "forward:/test01"
+}
+```
+
+#### 源碼分析出的結論
+
+1. IOC容器內如果有配置視圖解析器，就使用所有有配置的視圖解析器(不只能配置一個)。
+2. 所有控制器的方法返回值，最終都會封裝成`ModelAndView`對象
+3. 視圖解析器功能就是解析視圖名稱，得到View對象
+4. 視圖解析器得到View(視圖)的流程就是，嘗試執行**每個**視圖解析器解析視圖名稱，如果解析失敗，就嘗試下一個視圖解析器，直到有一個成功為止。
+   1. 下面是 `InternalResourceViewResolver`視圖解析器的流程(不是所有視圖解析器都是這麼工作的，你也可以自訂視圖解析器)
+   2. 如果有指定跳轉方式`forward:`，解析會得到 `InternalResourceView`對象
+   3. 如果有指定跳轉方式 `redirect:`，解析後得到``RedirectView`對象
+   4. 如果沒有指定跳轉方式，解析後得到 `InternalResourceView`，所以<font color="ff0000">當使用`InternalResourceViewResolver`視圖解析器，在不指定頁面跳轉方式時，默認是採用`forward`方式進行跳轉頁面操作。</font>
+5. 調用View對象進行渲染時，`Model`(隱含模型)中數據會被放入到 `requset`域中(此為`InternalResourceView`的操作，其他View對象可能會不同)。
+6. 調用View對象進行渲染時，會決定頁面路徑，最後進行頁面跳轉操作。
+
+> 視圖解析器的功能只是為了得到視圖對象，而具體的渲染是視圖的工作。
+
+#### 常用的視圖解析器實現類
+
+| 大類             | 視圖類型                     | 說明                                                         |
+| ---------------- | ---------------------------- | ------------------------------------------------------------ |
+| 解析為Bean的名子 | BeanNameViewResolver         | 將邏輯視圖名解析為一個Bean：邏輯視圖名到IOC容器中找一個視圖對象。 |
+| 解析為URL文件    | InternalResourceViewResolver | 將視圖名解析為一個URL文件，一般使用該視圖解析器將視圖名映射為web應用下的文件(如JSP) |
+| 解析為URL文件    | JasperReportsViewResolver    | JasperReports 是基於 Java 的開源報表工具，該解析器將視圖名稱解析為報表文件對應的 URL |
+| 模板文件視圖     | FreeMakerViewResolver        | 解析基於 FreeMaker 模板技術的模板文件                        |
+| 模板文件視圖     | VelocityViewResolver         | 解析基於 Velocity 模板技術的模板文件                         |
+| 模板文件視圖     | VelocityLayoutViewResolver   |                                                              |
+
++ 開發者可以選擇一種視圖解析器或混用多種視圖解析器
++ 每個視圖解析器都實現了Ordered接口並開放出一個order屬性，<font color="ff0000">可以通過order屬性指定視圖解析器的優先順序，order越小優先度越高。</font>
++ spring-mvc 會按照視圖解析器順序的優先順序對邏輯是圖名進行解析，直到成功返回視圖對象為止，否則將會拋出`ServletException`
+
+### 視圖
+
+視圖的作用是渲染模型數據，將模型裡的數據以某種形式呈現給客戶，轉發與重定向只是比較基礎的兩種方式而已。
+
+視圖對象由視圖解析器負責實例化。由於視圖是<font color="ff0000">無狀態</font>的，所有不會有線程安全問題。
+
+#### 常用的視圖實現類
+
+| 類型               | 視圖                         | 說明                                                         |
+| :----------------- | ---------------------------- | ------------------------------------------------------------ |
+| URL資源<br />視圖  | InternalResourceView         | 將JSP或其他資源封裝為一個視圖<br />，是`InternalResourceViewResolver`<br />默認使用的視圖實現類。 |
+| URL 資源<br />視圖 | JstlView                     | JSP頁面中如果使用JSTL國際化標籤的功能，<br />需要使用該視圖類。 |
+| 文檔視圖           | AbstractExcelView            | Excel文檔視圖的抽象類。該視圖類基於POI<br />構建Excel文件    |
+| 文檔視圖           | AbstractPdfView              | PDF文檔視圖的抽象類，該視圖基於iTexte<br />構建PDF文檔       |
+| JSON視圖           | MappingJacksonJsonView       | 將模型數據通過Jackson開源框架的<br />ObjectMapping以JSON方式輸出 |
+| 報表視圖           | ConfigurableJsperReportsView | 幾個使用JsperReports報表技術的視圖                           |
+| 報表視圖           | JsperReportsCsvView          |                                                              |
+| 報表視圖           | JsperReportsMultiFormatView  |                                                              |
+| 報表視圖           | JsperReportsHtmlView         |                                                              |
+| 報表視圖           | JsperReportsPdfView          |                                                              |
+| 報表視圖           | JsperReportsXlsView          |                                                              |
+
+#### JstlView 支持便捷的國際化功能
+
+只要你導入Jstl的依賴，spring-mvc 就會智能使用 JstlView 來處理頁面渲染。你也可以手動配置 `InternalResourceViewResovler`的`viewClass`屬性，指定使用`JstlView`全類名。
+
+> 使用國際化，需確定資源文件(*.properties)、JSP頁面、資源管理器<font color="ff0000">編碼需一致</font>
+
+##### 沒有使用JstlView，國際化的步驟：
+
+1. Java
+   1. 獲得一個`Locale`對象
+   2. 使用`ResourceBundle`綁定國際化資源文件
+   3. 使用`ResourceBundle.getString("key")`獲得國際化文件訊息
+2. Web頁面
+   1. JSP頁面引入標籤庫 `fmt`
+   2. `<fmt:setLocale>` 設置區域
+   3. `<fmt:setBundle>` 設置綁定資源文件
+   4. `<fmt:message>` 取得國際化文件訊息
+
+##### 使用JstlView步驟
+
+1. 讓spring-mvc管理國際化資源文件：
+   1. 在IOC容器配置資源文件管理器：`ResourceBundleMessageSource`
+   2. <font color="ff0000">配置Bean的ID為 `messageResource`(必須使用該名稱)</font>
+   3. 配置資源文件管理器屬性`basename`：指定基礎路徑
+   4. 配置資源文件管理器屬性`defaultEncoding`：指定文件編碼
+2. JSP頁面引入標籤庫 `fmt`
+3. `<fmt:message>` 取得國際化文件訊息
+
+> 想要使用JstlView一定要經過spring-mvc處理，如果該JSP頁面不是由spring-mvc跳轉處理，那就不會有效果。
+>
+> 例如：你直接在請求URL訪問WEB-INF外的`*.JSP`文件，會是由Tomcat配置的Servlet處理，所以沒有使用到JstlView。
+
+範例：
+
+i18n_en_US.properties
+
+``` properties
+welcome=WELCOME
+user=USER
+password=PASSWORD
+login=LOGIN
+```
+
+i18n_zh_TW.properties
+
+``` properties
+welcome=歡迎光臨
+user=使用者
+password=密碼
+login=登入
+```
+
+spring-mvc 配置文件
+
+``` xml
+<!-- 讓 spring-mvc 管理國際化資源文件，配置資源文件管理器 -->
+<!-- id必須是 messageSource -->
+<bean id="messageSource" class="org.springframework.context.support.ResourceBundleMessageSource">
+    <!-- 指定基礎名稱 -->
+    <property name="basename" value="i18n" />
+    <!-- 指定文件編碼 -->
+    <property name="defaultEncoding" value="UTF-8"/>
+</bean>
+```
+
+JSP
+
+``` jsp
+<%@ page contentType="text/html;charset=UTF-8" language="java" %>
+<!-- 引入fmt標籤庫 -->
+<%@taglib prefix="fmt" uri="http://java.sun.com/jsp/jstl/fmt" %>
+<html>
+    <head>
+        <title>i18n</title>
+    </head>
+    <body>
+        <!-- 使用fmt:message取值 -->
+        <h1><fmt:message key="welcome"/></h1>
+        <form method="post" action="#">
+            <fmt:message key="user"/> <input type="text">
+            <fmt:message key="password"/><input type="text">
+            <input type="submit" value="<fmt:message key="login"/>">
+        </form>
+    </body>
+</html>
+```
+
+##### spring-mvc JstlView國際化的大坑：
+
+1. JSP頁面不是由spring-mvc跳轉處理，那就不會有效果。
+   例如：你直接在請求URL訪問WEB-INF外的`*.JSP`文件，會是由Tomcat配置的Servlet處理，所以沒有使用到JstlView。
+2. 如果控制器方法指定跳轉方式 `forward:`、`redirect:`，那麼使用的視圖會是`InternalResourceView`和`RedirectView`，而不是使用`JstlView`，所以國際化會失效。
+
+### view-controller 跳轉頁面
+
+放在 WEB-INF 資料夾下的資源都無法直接獲取，必須透過`forward`的方式，在JavaWeb的階段，有些情況就僅僅需要轉發操作，使用spring-mvc，那可能會出現大量的以下類似代碼：
+
+```java
+@RequestMapping("/login")
+public void doLogin(){
+    return "/WEB-INF/pages/login.jsp";
+}
+```
+
+接收到請求的同時，馬上轉發到另一個頁面，中間沒有任何業務邏輯，如果是這種需求 ，spring-mvc 提供了 `<mvc:view-controller>` 標籤解決該問題。
+
+view-controller標籤屬性
+
+1. path：請求的`url-pattern`(`@RequestMapping`的 value)
+2. view-name：視圖名稱(方法的返回的視圖名稱)
+
+步驟：
+
+1. spring-mvc配置文件引入mvc命名空間
+
+2. 配置`<mvc:view-controller>`標籤，指定請求與視圖名稱的映射
+
+3. <font color="ff0000">開啟mvc註解驅動模式，使用`<mvc:annotation-driven>`標籤</font>，所有高級的spring-mvc功能都是基於該註解之上，所以相當於開啟spring-mvc的進階模式。
+
+   > 沒有開啟mvc註解驅動，會導致其他頁面spring-mvc處理失效
+
+4. 測試
+
+範例：
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xmlns:mvc="http://www.springframework.org/schema/mvc"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd http://www.springframework.org/schema/context https://www.springframework.org/schema/context/spring-context.xsd http://www.springframework.org/schema/mvc https://www.springframework.org/schema/mvc/spring-mvc.xsd">
+    <!-- 配置組件掃描 -->
+    <context:component-scan base-package="org.learning.controller">
+
+    </context:component-scan>
+    <bean class="org.springframework.web.servlet.view.InternalResourceViewResolver">
+        <property name="prefix" value="/WEB-INF/pages/"/>
+        <property name="suffix" value=".jsp"/>
+    </bean>
+
+    <!-- 讓 spring-mvc 管理國際化資源文件，配置資源文件管理器 -->
+    <!-- id必須是 messageSource -->
+    <bean id="messageSource" class="org.springframework.context.support.ResourceBundleMessageSource">
+        <!-- 指定基礎名稱 -->
+        <property name="basename" value="i18n" />
+        <property name="defaultEncoding" value="UTF-8"/>
+    </bean>
+
+    <!-- 配置請求-視圖映射 -->
+    <mvc:view-controller path="/login" view-name="i18n-Test"/>
+    <!-- 開啟註解驅動 -->
+    <mvc:annotation-driven/>
+</beans>
+```
+
+### 自定義視圖解析器與視圖
+
+理解視圖解析器與視圖間的關係後，那可以嘗試自己定義視圖解析器與視圖。來處理特殊需求的方法返回值。
+
+操作步驟：
+
+1. 自定義視圖(實現`View`接口)
+2. 自定義視圖解析器(實現`ViewResolver`接口)，<font color="ff0000">為了能夠控制解析的優先順序，須實現`Ordered`接口。</font>
+3. spring-mvc配置文件，配置自己定義的視圖解析器，把它納入AOP容器管理。
+4. 配置spring-mvc的默認視圖解析器`InternalResourceViewResolver`，除非你自定義的視圖解析器可以解析所有視圖名。
+   當AOP容器存在實現`ViewResolver`接口的物件，那麼就不會主動載入默認的視圖解析器，需要手動配置默認視圖解析器至AOP容器。
+5. 配置各視圖解析器的`order`屬性，調整處理順序(越小優先度越高)。<font color="ff0000">`InternalResourceViewResolver`默認值`Integer.MAX_VALUE`，默認優先度最低</font>，因為它可以處理所有的視圖名，放到最後在處理。
+6. 編寫你的控制器處理請求測試你的視圖解析器。
+
+範例：
+
+視圖
+
+``` java
+public class MyView implements View {
+    @Override
+    public String getContentType() {
+        return "text/html";
+    }
+
+    @Override
+    public void render(Map<String, ?> model, HttpServletRequest request, HttpServletResponse response) throws Exception {
+        // 打印隱含模型中所有數據
+        model.forEach((key, value) -> System.out.println(value));
+
+        response.getWriter().println("<h1>MyView Working</h1>");
+    }
+}
+```
+
+視圖解析器
+
+``` java
+public class MyViewResolver implements ViewResolver, Ordered {
+
+    private Integer order = 1;
+
+    @Override
+    public int getOrder() {
+        return order;
+    }
+
+    public void setOrder(Integer order){
+        this.order = order;
+    }
+
+    @Override
+    public View resolveViewName(String viewName, Locale locale) throws Exception {
+
+        if(viewName.startsWith("myView:")){
+            return new MyView();
+        }
+        return null;
+    }
+}
+```
+
+spring-mvc配置文件
+
+``` xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd http://www.springframework.org/schema/context https://www.springframework.org/schema/context/spring-context.xsd">
+    <!-- 配置組件掃描 -->
+    <context:component-scan base-package="org.learning.controller">
+    <!-- 配置spring-mvc默認視圖解析器 -->
+    </context:component-scan>
+    <bean class="org.springframework.web.servlet.view.InternalResourceViewResolver">
+        <property name="prefix" value="/WEB-INF/pages/"/>
+        <property name="suffix" value=".jsp"/>
+    </bean>
+    <!-- 配置自定義視圖解析器 -->
+    <bean class="org.learning.view.MyViewResolver">
+        <!-- 設定優先度 -->
+        <property name="order" value="1"/>
+    </bean>
+</beans>
+```
+
+測試控制器
+
+```java
+@Controller
+public class ViewResolverController {
+    @RequestMapping("/myView")
+    public String testMyViewResolver(Model model){
+        model.addAttribute("username", "James");
+        model.addAttribute("hobby", "learning");
+        return "myView:/abc";
+    }
+}
+```
 
 ### 源碼分析
 
