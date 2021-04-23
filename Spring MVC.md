@@ -321,6 +321,39 @@ Spring MVC 是一種基於 Java 實現 **MVC設計模型**的請求驅動類型�
 
 ![image-20210415160929518](images/Spring MVC/image-20210415160929518.png)
 
+### 解決靜態文件請求404問題
+
+在上個章節有解釋了為何請求靜態文件(JSP除外)，都會出現404，`DispatcherServlet`把對靜態文件的請求當成是對控制器的請求，主要的原因還是，當前端控制器配置`url-pattern`為`/`時，會屏蔽掉tomcat默認的Servlet，導致對靜態文件的請求無法處理。
+
+spring-mvc對此提供了解決方案，<font color="ff0000">可以在spring-mvc配置文件中告訴前端控制器，無法處理的請求交由tomcat默認的Servlet處理，不要由前端控制器強行處理。</font>
+
+操作步驟：
+
+1. 配置文件引入 mvc 命名空間
+2. 配置 `<mvc:default-servlet-handler>`，標註前端控制器無法處理的請求交由tomcat默認的來處理
+3. 配置 `<mvc:annotation-driven>`，開啟註解驅動(必須)
+4. 完成
+
+範例：
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xmlns:mvc="http://www.springframework.org/schema/mvc"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd http://www.springframework.org/schema/context https://www.springframework.org/schema/context/spring-context.xsd http://www.springframework.org/schema/mvc https://www.springframework.org/schema/mvc/spring-mvc.xsd">
+    <!-- 配置組件掃描 -->
+    <context:component-scan base-package="org.learning.controller">
+    <!-- 開啟註解驅動 -->
+    <mvc:annotation-driven/>
+    <!-- 處理靜態資源 -->
+    <mvc:default-servlet-handler/>
+</beans>
+```
+
+> spring-mvc 配置時，基本都需配製這三項。
+
 ### SpringMVC 組件解析
 
 ![image-20210415162449207](images/Spring MVC/image-20210415162449207.png)
@@ -1576,4 +1609,264 @@ DispatcherServlet 中有幾個引用類型的的屬性，spring-mvc 在工作的
    4. 隱含模型保存`@ModelAttribute`方法返回值，key值就是上步驟解析出的 value 值。
 
 3. 找到目標方法，解析並執行(解析步驟與上面解析`@ModleAttribute`一樣)
+
+### 表單標籤
+
+可以實現將模型數據中的屬性和HTML表單元素綁定，以實現**表單數據更便捷編輯**和**表單值的回顯**。
+
+操作步驟：
+
+1. JSP頁面引入`form`標籤庫，`http://www.springframework.org/tags/form`
+
+   標籤庫介紹：
+
+   1. `<form:from>`：用於替代 `<from>`，用於建立表單。
+
+   2. 屬性：
+
+      1. action：與`<form>`的 `action`屬性相同作用。
+         當`<form:form>`沒有提供`action`屬性值時，如何`get`請求來到這個頁面，就會使用`post`請求，以相同`url`方式回去。一般建議加上`action`屬性。
+
+      2. modelAttribute：指定請求域中的屬性名稱，進行請求域屬性與表單的綁定。
+         綁定對象的屬性值必須和表單中元素的 path 對應，當不使用`modelAttribute` 指定請求域中屬性名，<font color="ff0000">默認使用`command`與的請求域中同名屬性作綁定。</font>
+
+         > modelAttribute 和 `@ModelAttribute`沒有任何關係。
+
+      3. method：指定請求的方式。
+
+   3. `<form:input>`：用於替代`<input type="text">`，用於建立輸入框。
+
+      1. 屬性：
+         1. path：有兩個作用，一：替換`<input>`的`name`屬性，二：它可以與隱含模型中的數據綁定，進行回顯。
+
+   4. `<form:radiobutton>`：用於替代`<input type="raio">`，建立單選框
+
+      1. 屬性：
+         1. path：與`<form:input>`介紹`path`屬性一致。
+         2. value：和`<input>`的`value` 屬性一致。
+
+   5. `<form:select>`：用於替代`<select>`，用於建立下拉選單。但是`<form:select>`會自動 foreach 出下拉選單的內容。
+
+      1. 屬性：
+         1. path：與`<form:input>`介紹`path`屬性一致。
+         2. items：下拉選單內容的集合
+         3. itemLabel：下拉選單要顯示的值，指定集合元素的屬性。
+         4. itemValue：下拉選單的值，指定集合元素的屬性。
+
+### 方法參數與請求參數的綁定原理
+
+將請求的數據轉換為POJO物件，涉及到數據的轉換、數據的格式化、數據的校驗，在源碼章節中，詳細說明如何決定控制器方法中POJO的參數基礎物件是如何取得，但是如何將請求中數據設置到這個參數的基礎物件卻沒有詳細探討。
+
+1. spring-mvc將request對象及目標方法參數的基礎物件傳遞給`WebDataBinderFactory` 對象，創建`DataBinder`對象(數據綁定器)。
+
+2. `DataBinder`調用spring-mvc上下文中的<font color="ff0000">`ConversionService`組件進行數據的轉換、數據格式化工作。將Servlet中的請求訊息填充進基礎物件中。</font>
+
+3. `DataBinder`調用 <font color="ff0000">`Validate`組件對已經填充好的基礎物件，進行數據合法性的檢驗</font>，並最終生成數據綁定的結果，`BindingData`對象。
+
+4. spring-mvc抽取<font color="ff0000">數據校驗的結果保存在 `BindingResult`對象中。</font>
+
+> 可以從上述得知，控制器方法的POJO對象賦值是由一個個的組件相互配合完成。
+
+### 自定義類型轉換器
+
+spring-mvc定義了3種類型的轉換器接口，實現任意一個轉換器接口都可以作為自定義轉換器，註冊到`ConversionServiceFactoryBean`中。
+
+1. `Converter<S, T>` ：將 S 類型對象轉換為 T 類型對象
+2. `ConverterFactory`：將相同系列多個「同質」Converter 封裝在一起。
+   如果希望將一種類型的對象轉換為另一種類型及其子類的對象，可以使用該轉換器工廠類。例如：String 轉換為 Number 及 Number 子類(Integer、Long、Double等)。
+3. `GenericConverter`：會根據源類對象及目標對象所在的宿主類中的上下文訊息進行類型轉換
+
+> 第一種方式最多人使用
+
+> <font color="ff0000">想要使用自定義類型轉換器功能，又使用數據格式化註解，在構建`ConversionService`時，改用 `FormattingConversionServiceFactoryBean`。</font>
+
+操作步驟
+
+1. 建立自定義的類型轉換器
+
+   1. 編寫實現 `Converter` 接口的類
+
+   2. 範例
+
+      ```java
+      public class MyConverter implements Converter<String, String> {
+          @Override
+          public String convert(String s) {
+              // 具體轉換邏輯
+              return null;
+          }
+      }
+      ```
+
+      
+
+2. 建立`ConversionService`，裡面必須包含自定義的類型轉換器
+
+   1. 配置`ConversionServiceFactoryBean`，因為`ConversionService`會透過它創建
+
+   2. 將自定義的類型轉換器，放入`ConversionServiceFactoryBean`中`converters`集合中。
+
+   3. 範例：
+
+      ``` xml
+      <!-- 配置自訂ConversionService，通過ConversionServiceFactoryBean的幫助 -->
+      <bean id="conversionServiceFactory" class="org.springframework.context.support.ConversionServiceFactoryBean">
+          <!-- 轉換器集合中配置我們自定義的類型轉換器 -->
+          <property name="converters">
+              <set>
+                  <bean class="org.learning.convert.MyConverter"/>
+              </set>
+          </property>
+      </bean>
+      ```
+
+3. 告訴 spring-mvc 使用我們建立的 `ConversionService`
+
+   1. 配置`<mvc:annotation-driven>` 並設置 `conversion-service`屬性值為剛剛配置的 `ConversionServiceFactoryBean`。
+
+   2. 範例：
+
+      ``` xml
+      <!-- 告訴spring-mvc不要使用默認的ConversionService，使用自定義的  -->
+          <mvc:annotation-driven conversion-service="conversionServiceFactory" />
+      ```
+
+      
+
+案例：自定義一個字串轉字串的轉換器，把前綴帶有「upper:」的字串，轉為大寫；前綴帶有「lower:」的字串，轉為小寫。
+
++ 轉換器：
+
+  ``` java
+  public class MyConverter implements Converter<String, String> {
+      @Override
+      public String convert(String s) {
+          if(s != null && s.startsWith("upper:")){
+              return s.toUpperCase();
+          }else if(s != null && s.startsWith("lower:")){
+              return s.toLowerCase();
+          }
+          return s;
+      }
+  }
+  ```
+
++ spring-mvc配置：
+
+  ``` xml
+  <!-- 配置自訂ConversionService，通過ConversionServiceFactoryBean的幫助 -->
+  <bean id="conversionServiceFactory" class="org.springframework.context.support.ConversionServiceFactoryBean">
+      <!-- 轉換器集合中配置我們自定義的類型轉換器 -->
+      <property name="converters">
+          <set>
+              <bean class="org.learning.convert.MyConverter"/>
+          </set>
+      </property>
+  </bean>
+  
+  <!-- 配置組件掃描 -->
+  <context:component-scan base-package="org.learning"/>
+  <!-- 配置處理靜態資源使用容器默認 servlet -->
+  <mvc:default-servlet-handler/>
+  <!-- 告訴spring-mvc不要使用默認的ConversionService，使用自定義的  -->
+  <mvc:annotation-driven conversion-service="conversionServiceFactory" />
+  ```
+
+  
+
+### 關於mvc:annotation-driven
+
+`< mvc:annotation-driven />`標籤，會自動註冊以下三個Bean：
+
++ RequestMappingHandlerMapping
++ RequestMappingHandlerAdapter
++ ExceptionHandlerExceptionResolver
+
+還提供了以下功能：
+
+1. 支持使用自定義 ConversionService 與 Converter 進行類型轉換
+2. 支持使用 `@NumberFormatter`、`@DateTimeFormat` 註解完成數據的格式化
+3. 支持使用 `@Valid` 註解對 JavaBean 實例進行 JSR303 驗證
+4. 支持使用 `@RequestBody` 和 `@ResponseBody` 註解
+
+#### 源碼分析
+
+spring-mvc 中有個 `BeanDefinitionParser` 接口，專門用來解析配置文件中的標籤。`mvc:annotation-driven`標籤所對應的解析實現類為 `AnnotationDrivenBeanDefinitionParser`。
+
+分析在之前的學習中，加上`mvc:annotation-drivn`標籤後，錯誤就消失的場景。有以下兩個場景：
+
++ 使用 `mvc:default-servlet-handler` 標籤解決靜態資源訪問404，加上後控制器方法的處理卻失效。
++ 使用 `mvc-view-controller` 標籤解決，直接跳轉頁面的請求，使用配置替代編寫控制器方法。加上後控制器方法的處理失效
+
+### 數據格式化
+
+> 要使用格式化功能，需確認自定義 `ConsersionService`，不是使用 `ConversionServiceFactoryBean` 構建出來的，因為使用該工廠類建立缺少數據格式化的類型轉換器。
+>
+> <font color="ff0000">想要使用自定義類型轉換器功能，又使用數據格式化註解，在構建`ConversionService`時，改用 `FormattingConversionServiceFactoryBean`。</font>
+
+#### 日期時間格式化
+
+spring-mvc 默認字串轉 `Date` 的格式為 `yyyy/MM/dd`，其他格式都會造成請求的失敗。如果要使用別的格式來表示日期，spring-mvc 提供 `@DateTimeFormat` 註解來自訂格式。
+
+`@DateTimeFormat`：
+
++ 作用：自訂日期的字串格式
++ 使用位置：`java.util.Date`、`java.util.Calendar`、`java.long.Long` 類型進行標註。
++ 屬性
+  + pattern：值為 String 類型，指定解析字串數據的模式。例如：`yyyy-MM-dd hh:mm:ss`。
+  + iso：值為`DateTimeFormat.ISO`類型，指定解析字串數據的 ISO 模式。分別有以下四種：
+    + `ISO.NONE`：不使用，為默認值。
+    + `ISO.DATE`：`yyyy-MM-dd`
+    + `ISO.TIME`：`hh:mm:ss.SSSZ`
+    + `ISO.DATE_TIME`：`yyyy-MM-dd hh:mm:ss.SSSZ`
+  + style：值為 String 類型，通過樣式指定日期時間的格式，由兩位字符組成，第一位代表日期格式，第二位代表時間的格式。有以下字符：
+    + S：短日期/時間格式
+    + M：中日期/時間隔式
+    + L：長日期/時間格式
+    + F：完整日期/時間格式
+    + `-`：忽略日期/時間格式
+
+#### 數字格式化
+
+如果想對帶有千分位、貨幣的數字字串進行格式化，spring-mvc 提供 `@NumberFormat` 註解解析。
+
+`@NumberFormat`：
+
++ 作用：格式化帶有貨幣訊息的數字字串。
++ 屬性：它擁有兩個互斥的屬性
+  + style：類型為 `NumberFormat.Style`。用於指定樣式類型：
+    + `Style.NUMBER`：正常數字類型
+    + `Style.CURRENCY`：貨幣類型
+    + `Style.PERCENT`：百分數類型
+  + pattern：類型為 String，自定義格式，如：`#,###`。
+
+
+
+### 數據檢驗
+
+前端的數據並不是那麼可靠，使用者可以主動禁止JS代碼的運行，也可以通過F12開啟開發者工具，有非常多方式可以使前端驗證失效。所以不只前端需要做數據驗證，後端也必須驗證一次。
+
+spring-mvc 可以使用 JSR303 來進行數據校驗。JSR303 使用註解指定校驗規則，並通過標準的驗證接口對 Bean 進行校驗。
+
+> JSR303 是 JAVA 為 Bean 數據合法性校驗提供的新的標準框架，它已經包含在 JAVAEE 6.0中。 
+
+既然是規範，那就跟JDBC一樣，各廠商可以實現這個規範，如：Hibernat
+
+JSR303 默認註解：
+
+| 註解                        | 說明                                                         |
+| --------------------------- | ------------------------------------------------------------ |
+| @Null                       | 被註釋的元素必須為 `null`                                    |
+| @NotNull                    | 被註釋的元素必須"不為" `null`                                |
+| @AssertTrue                 | 被註釋的元素必須為 `true`                                    |
+| @AssertFalse                | 被註釋的元素必須為 `false`                                   |
+| @Min(value)                 | 被註釋的元素必須為一個「數字」，且必須「大於等於」指定的**最小值**。 |
+| @Max(value)                 | 被註釋的元素必須為一個「數字」，且必須「小於等於」指定的**最大值**。 |
+| @DecimalMin(value)          | 被註釋的元素必須為一個「數字」，且必須「大於等於」指定的**最小值**。 |
+| @DecimalMax(value)          | 被註釋的元素必須為一個「數字」，且必須「小於等於」指定的**最大值**。 |
+| @Size(max,min)              | 被註釋元素的大小必須在指定的範圍內                           |
+| @Digits(interger, fraction) | 被註釋的元素必須為一個「數字」，其值必須在範圍內             |
+| @Past                       | 被註釋的元素必須是一個「過去」的日期                         |
+| @Pattern                    | 被註釋的元素必須符合指定的「正則表達式」                     |
+| @Future                     | 被註釋的元素必須是一個「將來」的日期                         |
 
