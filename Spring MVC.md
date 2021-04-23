@@ -1348,6 +1348,15 @@ JSP
    例如：你直接在請求URL訪問WEB-INF外的`*.JSP`文件，會是由Tomcat配置的Servlet處理，所以沒有使用到JstlView。
 2. 如果控制器方法指定跳轉方式 `forward:`、`redirect:`，那麼使用的視圖會是`InternalResourceView`和`RedirectView`，而不是使用`JstlView`，所以國際化會失效。
 
+### 國際化
+
+如果要讓，spring-mvc管理國際化資源文件，有以下步驟：
+
+1. 在IOC容器配置資源文件管理器：`ResourceBundleMessageSource`
+2. <font color="ff0000">配置Bean的ID為 `messageResource`(必須使用該名稱)</font>
+3. 配置資源文件管理器屬性`basename`：指定基礎路徑
+4. 配置資源文件管理器屬性`defaultEncoding`：指定文件編碼
+
 ### view-controller 跳轉頁面
 
 放在 WEB-INF 資料夾下的資源都無法直接獲取，必須透過`forward`的方式，在JavaWeb的階段，有些情況就僅僅需要轉發操作，使用spring-mvc，那可能會出現大量的以下類似代碼：
@@ -1844,13 +1853,13 @@ spring-mvc 默認字串轉 `Date` 的格式為 `yyyy/MM/dd`，其他格式都會
 
 ### 數據檢驗
 
-前端的數據並不是那麼可靠，使用者可以主動禁止JS代碼的運行，也可以通過F12開啟開發者工具，有非常多方式可以使前端驗證失效。所以不只前端需要做數據驗證，後端也必須驗證一次。
+前端的數據並不是那麼可靠，使用者可以主動禁止JS代碼的運行，也可以通過F12開啟開發者工具，還有非常多種方式使前端驗證失效。所以不只前端，後端也必須驗證一次。
 
 spring-mvc 可以使用 JSR303 來進行數據校驗。JSR303 使用註解指定校驗規則，並通過標準的驗證接口對 Bean 進行校驗。
 
 > JSR303 是 JAVA 為 Bean 數據合法性校驗提供的新的標準框架，它已經包含在 JAVAEE 6.0中。 
 
-既然是規範，那就跟JDBC一樣，各廠商可以實現這個規範，如：Hibernat
+既然是規範，那就跟JDBC一樣，各廠商可以實現這個規範，如：Hibernat Validator
 
 JSR303 默認註解：
 
@@ -1867,6 +1876,131 @@ JSR303 默認註解：
 | @Size(max,min)              | 被註釋元素的大小必須在指定的範圍內                           |
 | @Digits(interger, fraction) | 被註釋的元素必須為一個「數字」，其值必須在範圍內             |
 | @Past                       | 被註釋的元素必須是一個「過去」的日期                         |
-| @Pattern                    | 被註釋的元素必須符合指定的「正則表達式」                     |
 | @Future                     | 被註釋的元素必須是一個「將來」的日期                         |
+| @Pattern                    | 被註釋的元素必須符合指定的「正則表達式」                     |
+
+Hibernate Validater 擴展註解：
+
+| 註解      | 說明                                     |
+| --------- | ---------------------------------------- |
+| @Email    | 被註釋的元素必須是電子郵件地址           |
+| @Length   | 被註釋的「字符串」的大小必須在指定範圍內 |
+| @NotEmpty | 被註釋的「字符串」必須為「非空」         |
+| @Range    | 被註釋的元素必須在合適的範圍內           |
+
+使用 
+
+#### 使用 Bean Validation 步驟
+
+#### 使用 Hibernate Validater 步驟
+
+1. 導入 `hibernate-validator` 依賴
+
+   > 如果使用的是 Java EE8 那麼你應該使用 `hibernate-validator`6.2.0.Final，Java EE9 以上才使用 `hibernate-validator` 7.0.0 以上版本
+
+2. 為 JavaBean 的屬性加上校驗註解
+
+3. 在 spring-mvc 封裝對象時，使用 `@Valid` 註解，告知 spring-mvc 這個對象需要校驗
+
+#### 取得校驗結果
+
+給需要校驗的 JavaBean 後面「緊跟」一個 `BindingResult`。這個 `BindingResult`  就是封裝前一個 bean 校驗的結果。
+
+> 一個JavaBean對應一個 `BindingResult`  
+
+`BindingResult` 常用方法：
+
+1. `boolean hasErrors()`：是否有校驗錯誤
+2. `List<FieldError> getAllErrors()`：獲得所有的錯誤
+3. `List<FieldError> getFieldErrors()`：獲得JavaBean屬性檢驗錯誤
+
+`FieldError`：
+
++ 作用：封裝 Bean 屬性的錯誤訊息
++ 常用方法：
+  + `getField()`：獲取屬性名
+  + `getDefaultMessage()`：獲取檢驗錯誤默認訊息 
+
+#### 表單顯示校驗結果
+
+spring-mvc 提供 `form` 標籤庫，通過使用 `form:errors` 標籤，在該標籤的 `path` 屬性設定bean屬性名稱，當回到該頁面時，就能取到該標籤的錯誤訊息(如果有錯誤)。
+
+如果不使用 spring-mvc 的`form`標籤庫，可以操作 `BindingResult`的原生 API，將錯誤訊息傳遞到頁面。
+
+#### 自定義錯誤訊息
+
+各驗證標籤都有 `message` 屬性，可以通過設置該屬性的值定義該屬性的錯誤訊息。但是這個有兩個缺點：
+
+1. 類似格式的錯誤訊息，需要在同樣驗證註解的`message`屬性重複書寫
+2. 沒有國際化
+
+##### 國際化錯誤訊息
+
+`hibernate-validater` 默認的訊息已經實現國際化錯誤消息。自定義的錯誤訊息如果也要兼容國際化功能，首先需要了解以下知識點：
+
++ 每個屬性檢驗錯誤，都會有自己的錯誤代碼。國際化文件中的 key 就是對應該錯誤代碼 value 對應錯誤訊息。
+
+  錯誤代碼的格式進行範圍的表示，符合該範圍就會使用這個範圍的錯誤訊息，下面介紹四種錯誤代碼格式：
+
+  + `檢驗規則.隱含模型中對象的key.對象的屬性`
+
+    + 範例：`NotNull.department.departmentId`
+
+      隱含模型中 department 對象的 departmentId 屬性的 `@NotNull` 檢驗，對應就該錯誤代碼。
+
+  + `檢驗規則.屬姓名`
+
+    + 範例：`NotNull.departmentId`
+
+      所有 department 屬性的 `@NotNull` 檢驗，對應該錯誤代碼
+
+  + `檢驗規則.java全類名`
+
+    + 範例：`NotNull.java.lang.String`
+
+      所有`java.lang.String` 的 `@NotNull` 檢驗，對應該錯誤代碼
+
+  + `檢驗規則`
+
+    + 範例：`NotNull`
+
+      所有`@NotNull`的檢驗，對應該錯誤代碼
+
++ 錯誤消息可以設定佔位符，目的在於顯示取得設置檢驗時的參數。例如：`@Length(min=1, max=5)`
+
+  錯誤消息是 `{0} 屬性檢驗錯誤，長度必須介於{1}到{2}之間`，輸出的訊息：XXX屬性檢驗錯誤，長度必須介於1到5之間。
+
+  + {0}：檢驗的屬姓名稱
+  + 其他：使用檢驗註解，依檢驗標籤的屬性名稱排序小大到大排序
+
+> 當多個錯誤代碼都符合時，使用「較嚴格」的錯誤代碼
+
+有兩種方式可以自訂國際化錯誤訊息
+
++ 方式一
+
+  hibernate-validator 是通過 `org.hibernate.validator` 包下的 ValidationMessages 文件來管理國際化訊息，我們只要在類路徑下建立同名文件，在其中定義自己的國際化訊息即可。
+
++ 方式二 
+
+操作步驟：
+
+1. 定義國際化資源文件
+2. 配置資源管理器`ResourceBundleMessageSource`，將國際化資源文件交由它管理
+
+範例：
+
+```properties
+## TW與US分別為 error_zh_TW.properties與error_en_US.properties的內容
+## TW
+NotNull.java.lang.String=字串不可為空值
+NotNull.password=密碼不可為空
+## US
+NotNull.java.lang.String= string cant be empty
+NotNull.password= password cant be empty
+```
+
+``` xml
+
+```
 
