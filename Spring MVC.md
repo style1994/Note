@@ -1348,15 +1348,6 @@ JSP
    例如：你直接在請求URL訪問WEB-INF外的`*.JSP`文件，會是由Tomcat配置的Servlet處理，所以沒有使用到JstlView。
 2. 如果控制器方法指定跳轉方式 `forward:`、`redirect:`，那麼使用的視圖會是`InternalResourceView`和`RedirectView`，而不是使用`JstlView`，所以國際化會失效。
 
-### 國際化
-
-如果要讓，spring-mvc管理國際化資源文件，有以下步驟：
-
-1. 在IOC容器配置資源文件管理器：`ResourceBundleMessageSource`
-2. <font color="ff0000">配置Bean的ID為 `messageResource`(必須使用該名稱)</font>
-3. 配置資源文件管理器屬性`basename`：指定基礎路徑
-4. 配置資源文件管理器屬性`defaultEncoding`：指定文件編碼
-
 ### view-controller 跳轉頁面
 
 放在 WEB-INF 資料夾下的資源都無法直接獲取，必須透過`forward`的方式，在JavaWeb的階段，有些情況就僅僅需要轉發操作，使用spring-mvc，那可能會出現大量的以下類似代碼：
@@ -1929,7 +1920,7 @@ spring-mvc 提供 `form` 標籤庫，通過使用 `form:errors` 標籤，在該�
 
 #### 自定義錯誤訊息
 
-各驗證標籤都有 `message` 屬性，可以通過設置該屬性的值定義該屬性的錯誤訊息。但是這個有兩個缺點：
+各驗證標籤都有一個 `message` 屬性，可以通過設置該屬性的值定義該屬性的錯誤訊息。但是這個有兩個缺點：
 
 1. 類似格式的錯誤訊息，需要在同樣驗證註解的`message`屬性重複書寫
 2. 沒有國際化
@@ -1975,18 +1966,28 @@ spring-mvc 提供 `form` 標籤庫，通過使用 `form:errors` 標籤，在該�
 
 > 當多個錯誤代碼都符合時，使用「較嚴格」的錯誤代碼
 
-有兩種方式可以自訂國際化錯誤訊息
+自訂國際化錯誤訊息
 
-+ 方式一
+hibernate-validator 是通過 `org.hibernate.validator` 包下的 ValidationMessages 文件來管理國際化訊息，我們只要在類路徑下建立同名文件，在其中定義自己的國際化訊息即可。
 
-  hibernate-validator 是通過 `org.hibernate.validator` 包下的 ValidationMessages 文件來管理國際化訊息，我們只要在類路徑下建立同名文件，在其中定義自己的國際化訊息即可。
+<font color="ff0000">`key` 值可以自己定義，然後可以在各驗證標籤的 `message` 屬性，通過 `{key}`來取得對應key的國際化訊息。</font>
 
-+ 方式二 
+```java
+@Length(max = 10, min = 1, message = "{key}")
+private String password;
+```
+
+> key值自定義的情況下，`form:errors`標籤無法取得自定義的錯誤訊息，如果要讓`form:errors`取得自定義校驗訊息，需要依照上面格式書寫。
+
+如果想要指定國際化文件放置的位置與名稱，需要以下步驟：
 
 操作步驟：
 
 1. 定義國際化資源文件
-2. 配置資源管理器`ResourceBundleMessageSource`，將國際化資源文件交由它管理
+2. 配置資源管理器`ResourceBundleMessageSource`，id 必須為 `messageResource`，將國際化資源文件交由它管理
+3. 配置自定義認證器，通過配置`LocalValidatorFactoryBean`補助，設置該類的`providerClass`成員變量，指定認證器的實現類(範例是Hibernate實現類)，以及設置`validationMessageSource`，設置剛配置的資源管理器。
+4. `mvc:annotation-driven`標籤，指定使用剛剛配置的自定義認證器。
+5. 完成
 
 範例：
 
@@ -2001,6 +2002,457 @@ NotNull.password= password cant be empty
 ```
 
 ``` xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:mvc="http://www.springframework.org/schema/mvc"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+                           http://www.springframework.org/schema/beans/spring-beans.xsd
+                           http://www.springframework.org/schema/mvc
+                           https://www.springframework.org/schema/mvc/spring-mvc.xsd
+                           http://www.springframework.org/schema/context
+                           https://www.springframework.org/schema/context/spring-context.xsd">
+
+    <!-- 配置組件掃描 -->
+    <context:component-scan base-package="org.learning"/>
+    <!-- 配置處理靜態資源使用容器默認 servlet -->
+    <mvc:default-servlet-handler/>
+    <!-- 指定自定義的認證器 -->
+    <mvc:annotation-driven validator="validator" />
+
+    <!-- 配置資源管理器 -->
+    <bean id="messageSource" class="org.springframework.context.support.ResourceBundleMessageSource">
+        <property name="basename" value="errors"/>
+        <property name="defaultEncoding" value="UTF-8"/>
+    </bean>
+
+    <!-- 配置自定義認證器 -->
+    <bean id="validator" class="org.springframework.validation.beanvalidation.LocalValidatorFactoryBean">
+        <property name="providerClass" value="org.hibernate.validator.HibernateValidator" />
+        <property name="validationMessageSource" ref="messageSource"/>
+    </bean>
+
+</beans>
+```
+
+### Ajax
+
+對於服務端來說，想要支持 Ajax 請求，服務端返回JSON格式的數據就可以。
+
+JavaWeb時，想要返回JSON數據，需要以下步驟：
+
+1. 導入GSON依賴
+2. 返回的數據使用GSON轉為JSON
+3. 返回數據
+
+spring-mvc 返回 JSON 格式數據的步驟：
+
+1. 導入jackson依賴
+
+   1. jackson-core
+   2. jackson-databind
+   3. jackson-annotations
+
+2. 控制器方法使用`@ResponseBody`註解修飾，方法返回值直接返回想轉為json的資料。
+
+   >  `@ResponseBody` 修飾的方法會將方法返回值放入響應體中，如果是對象，`jackson`自動將對象轉為json格式。
+
+3. 測試
+
+範例：
+
+```xml
+<dependency>
+    <groupId>com.fasterxml.jackson.core</groupId>
+    <artifactId>jackson-core</artifactId>
+    <version>2.12.3</version>
+</dependency>
+<dependency>
+    <groupId>com.fasterxml.jackson.core</groupId>
+    <artifactId>jackson-databind</artifactId>
+    <version>2.12.3</version>
+</dependency>
+<dependency>
+    <groupId>com.fasterxml.jackson.core</groupId>
+    <artifactId>jackson-annotations</artifactId>
+    <version>2.12.3</version>
+</dependency>
+```
+
+```java
+/**
+ * 返回JSON數據
+ */
+@RequestMapping("/ajax1")
+@ResponseBody
+public User agax1(){
+    User user = new User();
+    user.setUsername("James");
+    user.setPassword("1234");
+    return user;
+}
+```
+
+#### Jackson 註解
+
+jackson-annotations包下提供了許多註解，通過註解修飾JavaBean的屬性，可以控制將JavaBean轉為JSON或解析JSON時的結果。
+
+| 註解        | 格式                                                 |
+| ----------- | ---------------------------------------------------- |
+| @JsonIgnore | 忽略該屬性                                           |
+| @JsonFormat | 輸出JSON時，格式化輸出該屬性值。常用來格式化Date格式 |
+
+#### RequestBody註解
+
+Ajax也可以傳送數據至後端，如果想要接收整個請求體，可以使用`@RequestBody`
+
+`@RequestBody`：
+
++ 作用：接收一個請求的請求體、也可以用來<font color="ff0000">接收JSON數據，並轉為POJO</font>。
++ 使用位置：方法參數
+
+範例：
+
+接收JSON格式請求：
+
+```java
+@RequestMapping("ajax2")
+public String ajax2(@RequestBody User user){
+    System.out.println(user);
+    return "/success.jsp";
+}
+```
+
+#### HttpEntity\<T\>
+
+如果想要獲取全部請求數據(請求體+請求頭)或響應數據時指定請求頭與請求體，可以在方法參數或返回值`HttpEntity<T>`類型的參數。
+
+通常使用 `HttpEntity` 的子類，`RequestEntity` 和 `ResponseEntity`。
+
++ RequestEntity\<T\>
+
+  `RequestEntity` 對象表示一個請求實體對象，內部封裝請求行、請求頭、請求體訊息。控制器方法參數使用該類型，spring-mvc 會將請求解析為`RequestEntity`對象。和`@RequestBody`功能類似，但是更加強大。
+
++ ResponseEntity\<T\>
+
+  `ReponseEntity` 對象表示一個響應實體對象，可以指定返回的`HttpStatus`(響應碼)、`HttpHeaders`(請求頭)、響應體。控制器方法返回值可以定義為`ResponseEntity`那麼效果就是和`@ResponseBody`一樣，但是它更強大，內部可以指定響應頭與狀態碼。
+
+  <font color="ff0000">如果ResponseEntity中的響應體為POJO，同樣需要配置`jackson`依賴。</font>
+
+  > `ResponseEntity`與`@ResponseBody`一樣，方法的返回值都不會被 spring-mvc 解析成視圖(ModelAndView)。
+
+對於 Http 請求或響應訊息的轉換，都是透過`HttpMessageConverter`實現類的轉換，才能實現諸如自動封裝等神奇功能。
+
+### 文件下載案例
+
+文件下載的重點就是需要設置響應頭，需要配合 `ResponseEntity` 使用，返回的內容就是 `byte[]`。
+
+操作步驟：
+
+1. 通過 HttpServletRequest 獲取 servletContext
+2. 通過 servletContext 獲取文件的真實路徑 `context.getRealPath`。
+3. 通過IO流讀入真實路徑下的文件到`byte[]`
+4. 建立 `ResponseEntity<byte[]>` 響應訊息對象， 設置響應頭 **`Content-Disposition` 值為 `attachment;filename=文件名`**、狀態碼、響應體(`byte[]`)。
+5. 控制器方法返回響應訊息對象。
+
+```java
+@RequestMapping("/download")
+public ResponseEntity<byte[]> download(HttpServletRequest request) throws Exception {
+
+    ServletContext context = request.getServletContext();
+    // 獲取檔案真實路徑
+    String realPath = context.getRealPath("/success.jsp");
+
+    // 讀入檔案
+    FileInputStream is = new FileInputStream(realPath);
+    byte[] buffer = new byte[is.available()];
+    is.read(buffer);
+    is.close();
+
+    // 設置響應頭
+    HttpHeaders httpHeaders = new HttpHeaders();
+    httpHeaders.add("Content-Disposition", "attachment;filename=hello.js");
+
+    // 響應
+    return new ResponseEntity<>(buffer, httpHeaders, HttpStatus.OK);
+}
+```
+
+### 文件上傳
+
+操作步驟：
+
++ 編寫文件上傳表單 
+
+  重點：
+
+  + method 必須指定為 `post`
+  + enctype 必須指定為 `multipart/form-data`
+
++ 導入 `Apache Commons FileUpload` 依賴
+
++ 配置文件上傳解析器 (`MultipartResolver`)，九大組件之一，使用實現類 `CommonMultipartResolver` ，<font color="ff0000">配置時必須指定 id 為 `multipartResolver`。</font>常用實現類的屬性：
+
+  + maxUploadSize：限制文件上傳的大小
+  + defaultEncoding：默認字符編碼
+
++ 控制器方法參數上定義`MultipartFile`類型參數，搭配`@RequestParam` 使用，spring-mvc 自動解析上傳資料並注入
+
+`MultipartFile` 常用方法：
+
++ String getOriginalFilename()：獲取文件名稱
++ void transferTo(File dest)：輸出上傳資料到指定位置
++ boolean isEmpty()：判斷是否為空
+
+> 多文件上傳，指定將方法參數 `MultipartFile` 指定為一個數組即可，之後遍歷取出
+
+範例：
+
+``` xml
+<dependency>
+    <groupId>commons-fileupload</groupId>
+    <artifactId>commons-fileupload</artifactId>
+    <version>1.4</version>
+</dependency>
+```
+
+```xml
+<!-- 文件上傳解析器 -->
+<bean id="multipartResolver" class="org.springframework.web.multipart.commons.CommonsMultipartResolver">
+    <!-- 默認編碼格式 -->
+    <property name="defaultEncoding" value="UTF-8"/>
+    <!-- 限制上傳文件大小為20MB -->
+    <property name="maxUploadSize" value="#{1024*1024*20}"/>
+</bean>
+```
+
+``` jsp
+<h3>文件上傳表單</h3>
+<form action="upload" method="post" enctype="multipart/form-data">
+    選擇上傳檔案 <input name="textFile" type="file">
+    <input type="submit">
+</form>
+```
+
+```java
+@RequestMapping("upload")
+public String upload(@RequestParam("textFile") MultipartFile file) {
+    System.out.println("文件上傳開始 ...");
+    System.out.println("檔案名稱：" + file.getOriginalFilename());
+    File dest = new File("C:\\upload\\" + file.getOriginalFilename());
+
+    try {
+        file.transferTo(dest);
+        System.out.println("檔案上傳成功");
+    } catch (IOException e) {
+        System.out.println("檔案上傳失敗");
+    }
+    return "/success.jsp";
+}
+```
+
+### 攔截器(interceptor)
+
+spring-mvc 提供攔截器機制，允許運行目標方法之前或之後，進行攔截並處理。Filter 是由 JavaWeb 定義，而攔截器是由 spring-mvc 定義的，功能比過濾器更加強大。
+
+自定義攔截器需要實現 `HandlerInterceptor` 接口，該接口定義以下方法：
+
++ `boolean preHandle`：
+  **目標方法執行前運行**，方法返回值決定是否執行目標方法
+
++ `void postHandle`：
+
+  **目標方法執行之後運行**
+
++ `void afterCompletion`：請求整個完成之後；來到目標頁面之後；響應資源之後，方法運行
+
+編寫好自定義的攔截器後，需要經過配置才能讓 spring-mvc 調用
+
+```xml
+<!-- 配置攔截器 -->
+    <mvc:interceptors>
+        <!-- 方式一：攔截所有請求 -->
+<!--        <bean class="org.learning.interceptor.MyInterceptor" />-->
+        <!-- 方式二：攔截部分請求 -->
+        <mvc:interceptor>
+            <mvc:mapping path="/test01"/>
+            <bean class="org.learning.interceptor.MyInterceptor"/>
+        </mvc:interceptor>
+    </mvc:interceptors>
+```
+
+#### 簡單攔截器範例
+
+``` java
+public class MyInterceptor implements HandlerInterceptor {
+    @Override
+    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
+        System.out.println("preHandle ...");
+        return true;
+    }
+
+    @Override
+    public void postHandle(HttpServletRequest request, HttpServletResponse response, Object handler, ModelAndView modelAndView) throws Exception {
+        System.out.println("postHandle ...");
+    }
+
+    @Override
+    public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) throws Exception {
+        System.out.println("afterCompletion ...");
+    }
+}
 
 ```
+
+```java
+@Controller
+@RequestMapping("/interceptor")
+public class InterceptorController {
+
+    @RequestMapping("/test01")
+    public String test01(){
+        System.out.println("test01 ...");
+        return "/success.jsp";
+    }
+}
+
+```
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:mvc="http://www.springframework.org/schema/mvc"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+                           http://www.springframework.org/schema/beans/spring-beans.xsd
+                           http://www.springframework.org/schema/mvc
+                           https://www.springframework.org/schema/mvc/spring-mvc.xsd
+                           http://www.springframework.org/schema/context
+                           https://www.springframework.org/schema/context/spring-context.xsd">
+
+    <!-- 配置組件掃描 -->
+    <context:component-scan base-package="org.learning"/>
+    <!-- 配置處理靜態資源使用容器默認 servlet -->
+    <mvc:default-servlet-handler/>
+    <!-- 指定自定義的認證器 -->
+    <mvc:annotation-driven />
+    <!-- 配置攔截器 -->
+    <mvc:interceptors>
+        <!-- 方式一：攔截所有請求 -->
+<!--        <bean class="org.learning.interceptor.MyInterceptor" />-->
+        <!-- 方式二：攔截部分請求 -->
+        <mvc:interceptor>
+            <mvc:mapping path="/interceptor/test01"/>
+            <bean class="org.learning.interceptor.MyInterceptor"/>
+        </mvc:interceptor>
+    </mvc:interceptors>
+
+</beans>
+```
+
+#### 攔截器執行流程
+
+##### 單攔截器流程
+
+ <font color="ff0000">**正常情況下**</font>執行流程：
+
+`preHandle —> 目標方法 —> postHandle —> 頁面 —> afterCompletion`
+
+其他流程：
+
+1. preHandle 返回 false，沒有以後的流程。
+
+   `preHandle `
+
+2. 目標方法出現錯誤
+
+   `preHandle —> 目標方法 —> afterCompletion`
+
+   > 只要 preHandle 放行了，afterCompletion都會運行
+
+##### 多攔截器流程
+
+```java
+// 正常流程
+First.preHandle
+Second.preHandle
+目標方法 working
+Second.postHandle
+First.postHandle
+JSP頁面 working
+Second.afterCompletion
+First.afterCompletion
+```
+
+spring-mvc 配置
+
+```xml
+<!-- 攔截器執行順序與配置文件中定義的順序有關 -->
+<mvc:interceptors>
+    <!-- 方式一：攔截所有請求 -->
+    <bean id="first" class="org.learning.interceptor.FirstInterceptor" />
+    <!-- 方式二：攔截部分請求 -->
+    <mvc:interceptor>
+        <mvc:mapping path="/interceptor/test01"/>
+        <bean id="second" class="org.learning.interceptor.SecondInterceptor"/>
+    </mvc:interceptor>
+</mvc:interceptors>
+```
+
+其他流程：
+
++ 只要任一攔截器的 preHandle 不放行，後面的流程就不會運行，<font color="ff0000">但是只要該攔截器的 preHandle 運行過，那麼它的 afterHandle 必定會運行</font>。下面以 second 攔截器不放行的運行流程為例：
+
+  ```java
+  // second 攔截器不放行運行流程
+  First.preHandle
+  Second.preHandle
+  First.afterCompletion
+  ```
+
+結論：
+
++ 攔截器的 `preHandle`，是根據配置文件**順序**執行
++ 攔截器的 `postHandle`，是根據配置文件**逆序**執行
++ 攔截器的 `afterCompletion`，是根據配置文件**逆序**執行
++ 如果中間哪個流程出現錯誤，後面的流程都不會運行，除了 `afterCompletion` 例外。
++ <font color="ff0000">已經放行的攔截器，其`afterCompletion`總會執行</font>
+
+### 國際化
+
+spring-mvc 在解決國際化問題非常容易。我們只需要關注以下三步驟：
+
+1. 編寫國際化資源文件
+
+2. 配置資源管理器`ResouceBundleMessageSource`，讓spring-mvc管理資源文件
+
+   如果要讓，spring-mvc管理國際化資源文件，有以下步驟：
+
+   1. 在IOC容器配置資源文件管理器：`ResourceBundleMessageSource`
+   2. <font color="ff0000">配置Bean的ID為 `messageResource`(必須使用該名稱)</font>
+   3. 配置資源文件管理器屬性`basename`：指定基礎路徑
+   4. 配置資源文件管理器屬性`defaultEncoding`：指定文件編碼
+
+3. 頁面取值
+
+國際化中最重要的是區域訊息，有了區域訊息才能知道要去哪個文件取值。spring-mvc 都是透過九大組件之一的區域訊息解析器`LocaleResolver`取得，默認使用 `AcceptHeaderLocaleResolver`實現類。
+
+`Locale` 為 spring-mvc 資源的原生API，所以可以在控制器方法定義該類型參數，spring-mvc 會透過區域訊息解析器幫你獲得。
+
+想在程序中獲取國際化資源訊息，可以使用 `@Autowired` 注入 `ResouceBundleMessageSource` 或 `MessageSource`，就可以通過它獲得國際化訊息。
+
+自定義自己的區域訊息解析器步驟：
+
+1. 實現 `LocaleResolver` 接口
+2. 配置自定義的區域訊息解析器，id必須為`localeResolver`
+
+比較大型的網站都有國際化的實現，頁面上也有提供按鈕或超連接切換網站的語言，也就是切換區域訊息。我們可以通過自定義區域訊息解析器來實現這個功能。
+
+
+
+### 異常處理
+
+
 
