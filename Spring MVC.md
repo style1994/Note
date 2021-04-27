@@ -1,168 +1,8 @@
 # Spring MVC
 
-### 環境搭建
+### spring-mvc簡介
 
-1. 導入依賴 `javax.servlet-api`、`javax.servlet.jsp-api`
-2. 搭建三層架構`controller`、`service`、`dao`
-3. `Spring`配置
-
-### ApplicationContext應用上下文獲取方式
-
-如果每個 `controller` 都通過創建 Spring 容器獲取`ApplicationContext`，這樣有個嚴重的弊端，每當請求來到時就創建一個新的容器，嚴重影響效能。
-
-在web項目中，可以使用**`ServletContextListener`**監聽web應用的啟動，可以在web應用啟動時，就加載Spring 配置創建`ApplicationContext`對象，並將其存入最大的域**`servletContext`**域中，這樣就可以在任意的位置從域中獲取`ApplicationContext`對象，達到共享的目的。
-
-#### 操作步驟
-
-1. 編寫`ServletContextListener`實現類
-2. web.xml 配置剛編寫的監聽器
-3. 修改`controller`中獲取`ApplicationContext`的方式
-
-#### 範例
-
-```java
-public class ContextLoadListener implements ServletContextListener {
-    @Override
-    public void contextInitialized(ServletContextEvent sce) {
-        ApplicationContext app = new ClassPathXmlApplicationContext("applicationContext.xml");
-        ServletContext servletContext = sce.getServletContext();
-        servletContext.setAttribute("app", app);
-        System.out.println("Spring容器初始化完成");
-    }
-}
-```
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<web-app xmlns="http://xmlns.jcp.org/xml/ns/javaee"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://xmlns.jcp.org/xml/ns/javaee http://xmlns.jcp.org/xml/ns/javaee/web-app_4_0.xsd"
-         version="4.0">
-    <!-- 配置監聽器 -->
-    <listener>
-        <listener-class>org.learning.listener.ContextLoadListener</listener-class>
-    </listener>
-    <servlet>
-        <servlet-name>userController</servlet-name>
-        <servlet-class>org.learning.controller.UserController</servlet-class>
-    </servlet>
-    <servlet-mapping>
-        <servlet-name>userController</servlet-name>
-        <url-pattern>/user</url-pattern>
-    </servlet-mapping>
-</web-app>
-```
-
-```java
-public class UserController extends HttpServlet {
-
-    @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-        ServletContext servletContext = getServletContext();
-        ApplicationContext app = (ApplicationContext) servletContext.getAttribute("app");
-        UserService service = app.getBean(UserService.class);
-        service.doSave();
-    }
-
-    @Override
-    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-        this.doGet(req, resp);
-    }
-}
-```
-
-#### 範例優化
-
-`ContextLoadListener`類中的 Spring 配置文件名寫死了，可以通過讀外部文件的方式來解偶，web.xml 可以定義全局初始化參數，通過讀取全局初始化參數的方式，設定配置文件名稱。
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<web-app xmlns="http://xmlns.jcp.org/xml/ns/javaee"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://xmlns.jcp.org/xml/ns/javaee http://xmlns.jcp.org/xml/ns/javaee/web-app_4_0.xsd"
-         version="4.0">
-    <!-- 配置全局初始化參數 -->
-    <context-param>
-        <param-name>springConfigPath</param-name>
-        <param-value>applicationContext.xml</param-value>
-    </context-param>
-    <!-- 配置監聽器 -->
-    <listener>
-        <listener-class>org.learning.listener.ContextLoadListener</listener-class>
-    </listener>
-    <servlet>
-        <servlet-name>userController</servlet-name>
-        <servlet-class>org.learning.controller.UserController</servlet-class>
-    </servlet>
-    <servlet-mapping>
-        <servlet-name>userController</servlet-name>
-        <url-pattern>/user</url-pattern>
-    </servlet-mapping>
-</web-app>
-```
-
-```java
-public class ContextLoadListener implements ServletContextListener {
-    @Override
-    public void contextInitialized(ServletContextEvent sce) {
-        ServletContext servletContext = sce.getServletContext();
-        String springConfigPath = servletContext.getInitParameter("springConfigPath");
-        ApplicationContext app = new ClassPathXmlApplicationContext(springConfigPath);
-        servletContext.setAttribute("app", app);
-        System.out.println("Spring容器初始化完成");
-    }
-}
-```
-
-在取得Spring上下文對象`ApplicationContext`也必須進行封裝，提供一個工具類給使用者，這樣使用者不必知道`ApplicatContext`是使用什麼 key 存放在 `ServletContext` 域這些細節，方便以後的維護。
-
-```java
-public class SpringConfigUtils {
-    public static ApplicationContext getApplicationContext(ServletContext servletContext){
-        return (ApplicationContext) servletContext.getAttribute("app");
-    }
-}
-```
-
-#### Spring提供獲取應用上下文工具
-
-Spring 其實提供了工具方便開發者獲取應用程序上下文 `ApplicationContext`，Spring 所做的事情其實和上面的範例大致相同。Spring 通過 `ContextLoaderListener` 就是對上述功能的封裝，該監聽器內部加載 Spring 配置文件，創建應用程序上下文對象，並儲存到`ServletContext`域中，提供了一個工具類 `WebApplicationContextUtils` 供使用者獲得應用上下文對象。
-
-想要使用Spring 提供的工具，需要以下操作步驟：
-
-1. 導入 `spring-web` 依賴
-2. web.xml 中配置 `ContextLoaderListener`監聽器，並配置全局初始化參數`contextConfigLocation`指定配置文件位置。
-3. 通過 `WebApplicationContextUtils`獲得應用程序上下文對象`ApplicationContext`
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<web-app xmlns="http://xmlns.jcp.org/xml/ns/javaee"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://xmlns.jcp.org/xml/ns/javaee http://xmlns.jcp.org/xml/ns/javaee/web-app_4_0.xsd"
-         version="4.0">
-    <!-- 配置初始化參數 -->
-    <context-param>
-        <param-name>contextConfigLocation</param-name>
-        <param-value>classpath:applicationContext.xml</param-value>
-    </context-param>
-    <!-- 配置監聽器 -->
-    <listener>
-        <listener-class>org.springframework.web.context.ContextLoaderListener</listener-class>
-    </listener>
-    <servlet>
-        <servlet-name>userController</servlet-name>
-        <servlet-class>org.learning.controller.UserController</servlet-class>
-    </servlet>
-    <servlet-mapping>
-        <servlet-name>userController</servlet-name>
-        <url-pattern>/user</url-pattern>
-    </servlet-mapping>
-</web-app>
-```
-
-### Spring MVC 簡介
-
-#### Spring MVC 概述
+#### 概述
 
 Spring MVC 是一種基於 Java 實現 **MVC設計模型**的請求驅動類型的**輕量級Web框架**，屬於 Spring FrameWork 的後續產品，已經融合在 Spring Web Flow 中。
 
@@ -171,7 +11,7 @@ Spring MVC 是一種基於 Java 實現 **MVC設計模型**的請求驅動類型�
 + 支持 **RESTful 編程風格**的URL請求。
 + 採用鬆散耦合可插拔設計結構，比其他MVC框架更具擴展性和靈活性。
 
-#### Spring 快速入門
+#### 快速入門
 
 需求：客戶端發起請求，服務端接收請求，執行邏輯並進行視圖跳轉
 
@@ -179,7 +19,7 @@ Spring MVC 是一種基於 Java 實現 **MVC設計模型**的請求驅動類型�
 
 1. 導入 `spring-webmvc` 依賴
 
-2. web.xml 配置 SpringMVC 核心控制器 `DispathcerServlet`
+2. web.xml 配置 SpringMVC 前端控制器 `DispathcerServlet`
 
    `DispatcherServlet` 就是一個 Servlet，配置與一般 Servlet 無異。需要注意的是 `load-on-start`需要配置，因為需要在服務器啟動就創建前端控制器，這樣它才能在請求時進行調度工作。
 
@@ -217,7 +57,7 @@ Spring MVC 是一種基於 Java 實現 **MVC設計模型**的請求驅動類型�
 
 6. 客戶端發起請求並測試
 
-#### 快速入門案例
+#### 快速入門範例
 
 + maven 依賴
 
@@ -272,16 +112,10 @@ Spring MVC 是一種基於 Java 實現 **MVC設計模型**的請求驅動類型�
 + spring-mvc.xml
 
   ```xml
-  <?xml version="1.0" encoding="UTF-8"?>
-  <beans xmlns="http://www.springframework.org/schema/beans"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xmlns:context="http://www.springframework.org/schema/context"
-         xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd http://www.springframework.org/schema/context https://www.springframework.org/schema/context/spring-context.xsd">
       <!-- 配置組件掃描(只掃controll包)-->
       <context:component-scan base-package="org.learning.controller"/>
-  </beans>
   ```
-
+  
 + UserController
 
   ```java
@@ -290,19 +124,18 @@ Spring MVC 是一種基於 Java 實現 **MVC設計模型**的請求驅動類型�
       @Autowired
       UserService userService;
   
-      //指定方法的 url-pattern
+      //處理請求的 url-pattern
       @RequestMapping("/user")
       public String doSave(){
           System.out.println("execute userController");
           userService.doSave();
-          // spring mvc 前段控制器接收到字串返回值時，會forward相同指定路徑的視圖。
-          // 這裡是以相對路徑指定視圖資源
-          return "success.jsp";
+          // 視圖的名稱，/表示項目的根目錄
+          return "/success.jsp";
       }
   }
   
   ```
-
+  
 + success.jsp
 
   ```jsp
@@ -317,63 +150,38 @@ Spring MVC 是一種基於 Java 實現 **MVC設計模型**的請求驅動類型�
   </html>
   ```
 
-#### SpringMVC 流程
+#### 前端控制器處理簡易流程
 
 ![image-20210415160929518](images/Spring MVC/image-20210415160929518.png)
 
 ### 解決靜態文件請求404問題
 
-在上個章節有解釋了為何請求靜態文件(JSP除外)，都會出現404，`DispatcherServlet`把對靜態文件的請求當成是對控制器的請求，主要的原因還是，當前端控制器配置`url-pattern`為`/`時，會屏蔽掉tomcat默認的Servlet，導致對靜態文件的請求無法處理。
-
-spring-mvc對此提供了解決方案，<font color="ff0000">可以在spring-mvc配置文件中告訴前端控制器，無法處理的請求交由tomcat默認的Servlet處理，不要由前端控制器強行處理。</font>
+快速入門中解釋了請求靜態文件(JSP除外)都會出現404的原因，spring-mvc 提供了解決方案，<font color="ff0000">可以在spring-mvc配置文件中告訴前端控制器，將無法處理的請求交由tomcat默認的Servlet處理，不要由前端控制器強行處理。</font>
 
 操作步驟：
 
 1. 配置文件引入 mvc 命名空間
 2. 配置 `<mvc:default-servlet-handler>`，標註前端控制器無法處理的請求交由tomcat默認的來處理
 3. 配置 `<mvc:annotation-driven>`，開啟註解驅動(必須)
-4. 完成
 
 範例：
 
 ```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<beans xmlns="http://www.springframework.org/schema/beans"
-       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-       xmlns:context="http://www.springframework.org/schema/context"
-       xmlns:mvc="http://www.springframework.org/schema/mvc"
-       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd http://www.springframework.org/schema/context https://www.springframework.org/schema/context/spring-context.xsd http://www.springframework.org/schema/mvc https://www.springframework.org/schema/mvc/spring-mvc.xsd">
     <!-- 配置組件掃描 -->
     <context:component-scan base-package="org.learning.controller">
     <!-- 開啟註解驅動 -->
     <mvc:annotation-driven/>
     <!-- 處理靜態資源 -->
     <mvc:default-servlet-handler/>
-</beans>
 ```
 
-> spring-mvc 配置時，基本都需配製這三項。
-
-### SpringMVC 組件解析
-
-![image-20210415162449207](images/Spring MVC/image-20210415162449207.png)
-
-從上面的流程圖可以得知，`DispatcherServlet`只負責分派任務，映射、處理、視圖解析都是由不同的組件去處理，最後將結果返回給使用者。
-
-1. 用戶請求至前端控制器`DispatherServlet`
-2. 調用`HandlerMapper`處理器映射器進行資源映射
-3. `HandlerMapper`根據XML配置、註解找到具體的處理器，生成處理器對象即處理器攔截器(如果有就生成)，然後將這些對象全部返回給`DispatcherServlet`
-4. `DispatcherServlet`將這組處理器交由`HandlerAdaptor`處理
-5. `HandlerAdaptor`調用每個處理器進行處理，最後返回`ModelAndView`給`DispatherServlet`
-6. `DispatherServlet` 將接收到的 `ModelAndView` 交由視圖解析器`ViewResolver`處理
-7. `ViewResolver`解析後返回具體的視圖給`DispatherServlet`
-8. `DispatherServlet`根據視圖進行渲染(將數據模型填充至視圖中)，最終響應給用戶
+> spring-mvc 配置時，這三項為最基礎的配置
 
 ### @RequestMapping 註解解析
 
 `@RequestMapping`
 
-+ 作用：用於將請求中請求參數、請求方式(post、get …)、請求頭，映射到具體的方法上。
++ 作用：將請求url地址、Http請求方式(post、get …)、請求參數、請求頭等，映射到唯一的控制器方法上。
 
 + 使用位置
 
@@ -414,12 +222,12 @@ spring-mvc對此提供了解決方案，<font color="ff0000">可以在spring-mvc
 
 + 屬性
 
-  + value：用於指定方法訪問請求url。
+  + value：指定請求url。
   
     > 當傳給註解的屬性值為value，且只有這一個時，`value=`可以省略，所以直接寫在`@RequestMapping`括號中的`url-pattern`，就是指定`value`屬性的值。
     > 當需要指定多個屬性時，那麼`value=`就不可指定。多個屬性間用`,`分開。
   
-  + method：用於**限定請求的方式**。指定`RequestMethod`枚舉類物件
+  + method：用於**限定http請求的方式**。值為`RequestMethod`類型。
   
     ```java
     /*
@@ -478,9 +286,9 @@ Ant通配符號有以下幾種：
 + `/a/*/c`：可以將`*`替換為N個字元，但是不能省略該層路徑。例如：不匹配`/a/c`或`/a//c`
 + `/a/**/z`：可以將`**`替換為0~N層路徑。例如：`/a/z`或`/a/b/c/z`。
 
-#### @PathVariable 映射 URL 綁定的占位符
+#### @PathVariable
 
-帶占位符的 URL 是 Spring 3.0 新增的功能，該功能在 SpringMVC 向 REST 目標挺進發展過程中具有里程碑的意義。
+帶占位符的 URL 是 Spring 3.0 新增的功能，該功能在 spring-mvc 向 REST 目標挺進發展過程中具有里程碑的意義。
 
 `@PathVariable` 可以將 URL 中占位符參數綁定到 controller 方法的形參中。URL 中的 {xxx} 占位符可以綁定通過 `@PathVariable("xxx")` 綁訂到方法形參中。
 
@@ -496,7 +304,7 @@ public String mapping03(@PathVariable("name") String name){
 }
 ```
 
-> 路徑上的佔位符只能占一層路徑，且該層不能省略
+> 路徑上的佔位符只能占一層路徑，且該層不能被省略
 
 #### REST思想
 
@@ -609,15 +417,14 @@ REST 是 Representational State Transfer 的縮寫。可譯為「具象狀態傳
    }
    ```
 
-2. `@RequestParam`註解
+2. `@RequestParam`
 
-   使用 `@RequestParam` 註解在方法形參上，並在註解的`value`屬性指定請求參數的名稱。作用會獲取對應的請求參數並注入到註解修飾的方法參數上。該方式使請求參數與方法形參不同名稱。
-
-   `@RequestParam`屬性：
-
-   + value：指定請求參數的值
-   + required：這個參數是否為必須的。默認值為`true`
-   + defaultValue：當沒有該請求參數時，設置其默認值。默認值為`null`。
+   1. 作用：獲取對應的請求參數值
+   2. 使用位置：方法形參
+   3. 屬性：
+      1. value：指定請求參數的值
+      2. required：這個參數是否為必須的。默認值為`true`
+      3. defaultValue：當沒有該請求參數時，設置其默認值。默認值為`null`。
 
    ``` java
    /**
@@ -634,11 +441,11 @@ REST 是 Representational State Transfer 的縮寫。可譯為「具象狀態傳
 
    > 當 required 默認是 true，且沒有該請求參數時，會出現異常
 
-#### 處理請求參數
+#### 處理請頭
 
-+ `RequestHeader`
++ `@RequestHeader`
 
-  + 作用：用於獲取請求頭值，可以取代之前的操作：`request.getHeader("User-Agent")`。
+  + 作用：用於獲取指定請求頭信息，可以取代之前的操作：`request.getHeader("User-Agent")`。
 
   + 使用位置：控制器方法形參
 
@@ -648,10 +455,8 @@ REST 是 Representational State Transfer 的縮寫。可譯為「具象狀態傳
     + required：指定請求頭是否必須存在，默認值為 `true`。
     + defaultValue：當沒有該請求 header 時，設置其默認值。預設默認值為`null`。
 
-  + 範例：
-
     ``` java
-    @RequestMapping(value = "/books/{id}", method = RequestMethod.PUT)
+  @RequestMapping(value = "/books/{id}", method = RequestMethod.PUT)
     @ResponseBody
     public String updateBook(@PathVariable("id") String id, @RequestHeader("User-Agent") String userAgent) {
         System.out.println("瀏覽器訊息：" + userAgent);
@@ -661,8 +466,9 @@ REST 是 Representational State Transfer 的縮寫。可譯為「具象狀態傳
         return "/success.jsp";
     }
     ```
-
+  
     > 當 required 屬性值為 true 但是 請求頭不存在時，`MissingRequestHeaderException` 異常
+
 
 #### 處理Session
 
@@ -677,8 +483,6 @@ REST 是 Representational State Transfer 的縮寫。可譯為「具象狀態傳
     + value：指定 session 域中屬性的 key 值
     + required：session 屬性是否為必須存在，預設默認值為`true`。
 
-  + 範例：
-
     ```java
     @RequestMapping("/test05")
     public String test05(@SessionAttribute("hello") String attr){
@@ -686,6 +490,7 @@ REST 是 Representational State Transfer 的縮寫。可譯為「具象狀態傳
         return "/success.jsp";
     }
     ```
+  
 
 #### 處理請求 Cookie
 
@@ -694,7 +499,7 @@ REST 是 Representational State Transfer 的縮寫。可譯為「具象狀態傳
   + 作用：獲取請求 cookie 值。
 
     ``` java
-    // Servlet 獲取 cookie 操作
+    // javaWeb時獲取 cookie 操作
     Cookie[] cookies = request.getCookies();
     for(Cookie c : cookies){
         if(c.getName().equals("JSESSIONID")){
@@ -702,36 +507,25 @@ REST 是 Representational State Transfer 的縮寫。可譯為「具象狀態傳
         }
     }
     ```
-  ```
-  
-  ```
-  
-+ 使用位置：方法形參
-  
-+ 屬性：
-  
-    + value：請求 cookie 的 key。
-    + required：cookie 是否為必須，默認值為`true`。
-  + defaultValue：當沒有該 cookie 時，給定其默認值。預設默認值為`null`。
-  
-+ 範例：
-  
-    ```java
-    @RequestMapping(value = "/books/{id}", method = RequestMethod.PUT)
-    @ResponseBody
-    public String updateBook(
-        @PathVariable("id") String id, 
-        @RequestHeader("User-Agent") String userAgent,
-        @CookieValue("JSESSIONID") String jid) {
-        
-        System.out.println("瀏覽器訊息：" + userAgent);
-        System.out.println("SESSION值: " + jid);
-        System.out.println("updateBook working");
-        System.out.println("books id is " + id);
     
-        return "/success.jsp";
-    }
-    ```
+  + 使用位置：方法形參
+  
+  + 屬性：
+    
+      + value：請求 cookie 的 key。
+      + required：cookie 是否為必須，默認值為`true`。
+    + defaultValue：當沒有該 cookie 時，給定其默認值。預設默認值為`null`。
+  
+  ``` java
+  @RequestMapping(value = "/books/{id}", method = RequestMethod.PUT)
+  @ResponseBody
+  public String updateBook(@CookieValue("JSESSIONID") String jid) {
+      System.out.println("updateBook working");
+      System.out.println("SESSION值: " + jid);
+  
+      return "/success.jsp";
+  }
+  ```
 
 #### 封裝請求參數為POJO對象
 
@@ -834,16 +628,16 @@ public String test01(HttpServletRequest req, HttpSession session){
 
   解決方式：`response.setContentType("text/html;charset=UTF-8")` 或 `response.setCharacterEncoding("UTF-8")`
 
-Servlet 中，會將處理編碼問題使用 Filter 統一做處理，spring-mvc 也提供編碼處理的 `CharacterEncodingFilter`。
+Servlet 中，會將處理編碼問題使用 Filter 統一做處理，spring-mvc 也提供編碼處理的過濾器`CharacterEncodingFilter`。
 
-`CharacterEncodingFilter` 重要屬性：
+`CharacterEncodingFilter` 屬性：
 
 + String encoding：編碼格式
 + boolean forceRequestEncoding：是否設置請求編碼格式，默認值為`false`。
 + boolean forceResponseEncoding：是否同時設置響應編碼格式，默認值為`false`。
 
 ```xml
-<!-- 配置編碼處理Filter，需要注意配置在所有filter前面-->
+<!-- 配置編碼處理Filter，需要配置在所有filter前面-->
 <filter>
     <filter-name>characterEncodingFilter</filter-name>
     <filter-class>org.springframework.web.filter.CharacterEncodingFilter</filter-class>
@@ -864,58 +658,51 @@ Servlet 中，會將處理編碼問題使用 Filter 統一做處理，spring-mvc
     <filter-name>characterEncodingFilter</filter-name>
     <url-pattern>/*</url-pattern>
 </filter-mapping>
-
-<!-- 配置請求方式處理Filter -->
-<filter>
-    <filter-name>hiddenHttpMethodFilter</filter-name>
-    <filter-class>org.springframework.web.filter.HiddenHttpMethodFilter</filter-class>
-</filter>
-<filter-mapping>
-    <filter-name>hiddenHttpMethodFilter</filter-name>
-    <url-pattern>/*</url-pattern>
-</filter-mapping>
 ```
 
 > 解決編碼的 Filter 必須配置到其他 Filter 最前面。
 
-### 進階組件掃描
+### spring-mvc 配置基本概念
 
-之前都有學習過使用`<context:component-scan>`標籤通過`base-package`屬性指定包名，進行組件掃描。其實它內部還有兩個子標籤`context:exclude-filter`和`context:include-filter`用來更詳細的指定掃描時包含或不包含的範圍。
+spring-mvc 在工作時，關鍵位置都是通過調用9大組件來完成功能，它們分別是：
 
-它們都有兩個屬性：
++ `MultipartResolver`：文件上傳解析器
++ `LocaleResolver`：區域訊息解析器
++ `ThemeResolver`：主題解析器
++ `HandlerMapping`：映射器
++ `HandlerAdapter`：適配器
++ `HandlerExceptionResolver`：異常解析器
++ `RequestToViewNameTranslator`：當方法沒有返回視圖名，會將請求url轉為試圖名
++ `FlashMapManager`：FlashMap是spring-mvc中運行重定向攜帶數據的功能
++ `ViewResolver`：視圖解析器
 
-+ type：指定表達式的類型。常見的有annotation、aspectj、regex等。
-+ expression：表達式的內容。
+>  它們有一個共通點：全部都是接口
 
-### SpringMVC XML配置解析
+元件默認使用類都設定在`org.springframework.web.servlet`包下的`DispatcherServlet.properties`文件中。可以通過配置讓 spring-mvc 不使用默認的類，改變 spring-mvc 的行為。
 
-`DispatcherServlet`調用的組件都是可以通過XML來自定義配置的，默認使用元件類都設定在`org.springframework.web.servlet`包下的`DispatcherServlet.properties`文件中。
+以配置視圖解析器為例：
 
-SpringMVC 可配置的東西很多，這裡舉個例子。
++ `InternalResourceViewResolver`為默認的視圖解析器，它的父類`UrlBasedViewResolver`有`prefix`和`suffix` 兩個成員變量。通過配置這兩個變量的值，它會將控制器方法返回的視圖名稱加上前後墜。
 
-+ 通過查看默認視圖解析器`ViewResolver`，`InternalResourceViewResolver`及它的父類`UrlBasedViewResolver`，可以注意到有`prefix`和`suffix` 兩個成員變量。可以通過set注入配置這兩個變量的值，它會將我們`@RequestMapping`標註方法返回的字串加上前綴和後綴。
+### 數據的響應
 
-  同時可以注意的`UrlBasedViewResolver`類中的兩個常量`REDIRECT_URL_PREFIX`、`FORWARD_URL_PREFIX`。通過英文可以大致了解它的含意，在**<font color="FF0000">返回視圖名稱時可以通過指定這兩個常量的值來決定到該視圖的方式，使用`forward`前綴加上`foward:`，使用`redirect`前綴加上`redirect`</font>**
+#### 數據響應方式
 
-### SpringMVC的數據響應
-
-#### Spring MVC 的數據響應方式
-
-spring-mvc 響應數據的方式非常多，除了在原生API章節中直接操作原生API響應之外，下面將介紹另外幾種方式。
+spring-mvc 響應數據的方式非常多，除了在原生API章節中直接操作原生API進行響應之外，還有幾種方式。
 
 + 頁面跳轉
   + 方法返回視圖名
   
-    > 視圖名會與視圖解析器中的前後綴拼成一個完整的頁面路徑
+    > 視圖名稱和視圖解析器中的前後綴拼成一個完整的頁面路徑
 + 傳回數據
   
-  + 控制器方法傳入Map、Model、Model對象
+  + 控制器方法傳入Map、Model、ModelMap對象
 
 #### 頁面跳轉-方法返回視圖名
 
 視圖名會與與視圖解析器 `ViewResolver` 中的前後綴拼串成完整頁面路徑，spring-mvc 使用頁面路徑進行跳轉。
 
-範例：控制器方法返回視圖名為 `index`。視圖名稱和配置前後綴拼接起來為 `/WEB-INF/index.jsp`。
+範例：視圖名稱為 `index`視圖名稱和配置前後綴拼接起來為 `/WEB-INF/index.jsp`。
 
 ```xml
 <property name="prefix" value="/WEB-INF/jsp/" />
@@ -2320,18 +2107,6 @@ public class InterceptorController {
 ```
 
 ```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<beans xmlns="http://www.springframework.org/schema/beans"
-       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-       xmlns:mvc="http://www.springframework.org/schema/mvc"
-       xmlns:context="http://www.springframework.org/schema/context"
-       xsi:schemaLocation="http://www.springframework.org/schema/beans
-                           http://www.springframework.org/schema/beans/spring-beans.xsd
-                           http://www.springframework.org/schema/mvc
-                           https://www.springframework.org/schema/mvc/spring-mvc.xsd
-                           http://www.springframework.org/schema/context
-                           https://www.springframework.org/schema/context/spring-context.xsd">
-
     <!-- 配置組件掃描 -->
     <context:component-scan base-package="org.learning"/>
     <!-- 配置處理靜態資源使用容器默認 servlet -->
@@ -2348,8 +2123,6 @@ public class InterceptorController {
             <bean class="org.learning.interceptor.MyInterceptor"/>
         </mvc:interceptor>
     </mvc:interceptors>
-
-</beans>
 ```
 
 #### 攔截器執行流程
@@ -2420,6 +2193,12 @@ spring-mvc 配置
 + 如果中間哪個流程出現錯誤，後面的流程都不會運行，除了 `afterCompletion` 例外。
 + <font color="ff0000">已經放行的攔截器，其`afterCompletion`總會執行</font>
 
+#### 攔截器與過濾器比較
+
+攔截器是放置在IOC容器中，如果某些功能需要其他組件配合完成，那麼使用攔截器。因為可以 `@Autowired` 注入依賴。如果不需要其他組件配合，那麼就使用過濾器。
+
+過濾器是Java Web標準，脫離spring-mvc依舊可以使用，但是攔截器一旦脫離 spring-mvc 就無法使用。可以按需求作考量。
+
 ### 國際化
 
 spring-mvc 在解決國際化問題非常容易。我們只需要關注以下三步驟：
@@ -2443,6 +2222,15 @@ spring-mvc 在解決國際化問題非常容易。我們只需要關注以下三
 
 想在程序中獲取國際化資源訊息，可以使用 `@Autowired` 注入 `ResouceBundleMessageSource` 或 `MessageSource`，就可以通過它獲得國際化訊息。
 
+| 區域訊息解析器             | 說明                                 |
+| -------------------------- | ------------------------------------ |
+| AcceptHeaderLocaleResolver | 從請求頭中獲取區域訊息               |
+| FixedLocaleResolver        | 固定的區域訊息，區域訊息使用系統默認 |
+| SessionLocaleResolver      | 區域訊息從session域中獲取            |
+| CookieLocaleResolver       | 區域訊息從cookie中獲取               |
+
+
+
 自定義自己的區域訊息解析器步驟：
 
 1. 實現 `LocaleResolver` 接口
@@ -2450,9 +2238,381 @@ spring-mvc 在解決國際化問題非常容易。我們只需要關注以下三
 
 比較大型的網站都有國際化的實現，頁面上也有提供按鈕或超連接切換網站的語言，也就是切換區域訊息。我們可以通過自定義區域訊息解析器來實現這個功能。
 
+範例：
 
+```xml
+    <!-- 配置組件掃描 -->
+    <context:component-scan base-package="org.learning"/>
+    <!-- 配置處理靜態資源使用容器默認 servlet -->
+    <mvc:default-servlet-handler/>
+    <!-- 開啟spring-mvc高級功能 -->
+    <mvc:annotation-driven />
+
+    <!-- 配置資源管理器 -->
+    <bean id="messageSource" class="org.springframework.context.support.ResourceBundleMessageSource">
+        <property name="basename" value="errors"/>
+        <property name="defaultEncoding" value="UTF-8"/>
+    </bean>
+    <!-- 配置自定義區域訊息解析器 -->
+    <bean id="localeResolver" class="org.learning.locale.MyLocaleResolver"/>
+```
+
+``` java
+public class MyLocaleResolver implements LocaleResolver {
+    @Override
+    public Locale resolveLocale(HttpServletRequest request) {
+        // 請求參數獲取區域訊息
+        String localeMessage = request.getParameter("locale");
+        // 默認使用請求頭區域訊息
+        Locale locale = request.getLocale();
+        if(localeMessage != null && localeMessage.contains("_")){
+            locale =  new Locale(localeMessage.split("_")[0],localeMessage.split("_")[1]);
+        }
+        return locale;
+    }
+
+    @Override
+    public void setLocale(HttpServletRequest request, HttpServletResponse response, Locale locale) {
+        System.out.println("not allow set locale");
+        throw new RuntimeException("not allow set locale");
+    }
+}
+
+```
+
+spring-mvc 提供 `LocaleChangeInterceptor`，它的功能是從請求參數中獲取區域訊息，並幫你把區域訊息設置進區域訊息解析器中。使用它與`SessionLocaleResolver`搭配使用，就可以實現點擊切換頁面語言的功能。
+
+1. 編寫國際化資源文件
+2. 配置資源管理器管理資源文件
+3. 配置`SessionLocaleResolver`，不使用默認的區域訊息解析器。
+4. 配置`LocaleChangeInterceptor`攔截所有請求。
+5. 請求參數必須帶入locale參數，給定區域訊息。
+
+範例：
+
+``` xml
+    <!-- 配置組件掃描 -->
+    <context:component-scan base-package="org.learning"/>
+    <!-- 配置處理靜態資源使用容器默認 servlet -->
+    <mvc:default-servlet-handler/>
+    <!-- 開啟spring-mvc高級功能 -->
+    <mvc:annotation-driven />
+
+    <!-- 配置資源管理器 -->
+    <bean id="messageSource" class="org.springframework.context.support.ResourceBundleMessageSource">
+        <property name="basename" value="errors"/>
+        <property name="defaultEncoding" value="UTF-8"/>
+    </bean>
+    <!-- 配置區域訊息解析器 -->
+    <bean id="localeResolver" class="org.springframework.web.servlet.i18n.SessionLocaleResolver"/>
+    <!-- 配置攔截器 -->
+    <mvc:interceptors>
+        <bean class="org.springframework.web.servlet.i18n.LocaleChangeInterceptor"/>
+    </mvc:interceptors>
+```
+
+``` jsp
+<h1><fmt:message key="welcome"/></h1>
+<form:form action="login" method="post" modelAttribute="user" >
+    <fmt:message key="username"/> : <form:input path="username"/><br>
+    <fmt:message key="password"/> : <form:input path="password"/><br>
+    <input type="submit" value="<fmt:message key="loginBtn"/>">
+</form:form>
+<a href="login?locale=en_US">英文</a>
+<a href="login?locale=zh_TW">中文</a>
 
 ### 異常處理
 
+spring-mvc 通過異常解析器`HandleExceptionResolver` 處理程序異常，包括Handler映射、數據綁定以及目標方法執行時發生的異常。在開啟`<mvc:annotation-driven>`時，默認是使用以下三個異常解析器：
 
++ ExceptionHandlerExceptionResolver：處理 `@ExceptionHandler` 註解修飾的異常處理方法
++ ResponseStatusExceptionResolver：處理`@ResponseStatus` 註解修飾的自定義異常
++ DefaultHandlerExceptionResolver：處理 spring-mvc 自己的異常
 
+#### @ExceptionHandler
+
+spring-mvc 提供便捷的異常處理，可以通過 `@ExceptionHandler`，建構一個集中處理異常的方法。
+
+`@ExceptionHandler` 
+
++ 作用：標註為處理異常的方法，處理該控制器類下發生的異常。
+
++ 使用位置：修飾方法
+
++ 屬性：
+
+  + value：指定要處理的異常類
+
+  > 當異常同時可以被兩個異常處理方法處理時，使用指定更精確的那一個方法
+
+範例：更精確的異常處理方法 `exHandler01` 被調用了。
+
+``` java
+@Controller
+public class ExceptionController {
+    @RequestMapping("ex01")
+    public String ex01(){
+        System.out.println("ex01 working ...");
+        // 主動引發異常 ArithmeticException
+        int i = 1/0;
+        return "/success.jsp";
+    }
+
+    /**
+     * 異常處理方法01:處理數學異常
+     */
+    @ExceptionHandler(value = ArithmeticException.class)
+    public String exHandler01(){
+        System.out.println("exHandler01 working ...");
+        return "/error.jsp";
+    }
+
+    /**
+     * 異常處理方法: 處理所有異常
+     */
+    @ExceptionHandler(value = {Exception.class})
+    public String exHandlerAll(){
+        System.out.println("exHandlerAll working ...");
+        return "/error.jsp";
+    }
+}
+```
+
+#### 獲取相應異常對象
+
+在異常處理方法指定能處理的異常類型參數或其父類類型參數即可。通常都是直接指定 `Exception`
+
+``` java
+/**
+ * 異常處理方法01:處理數學異常
+ */
+@ExceptionHandler(value = ArithmeticException.class)
+public String exHandler01(Exception ex){
+    System.out.println("exHandler01 working ...");
+    System.out.println(ex.getMessage());
+    return "/error.jsp";
+}
+```
+
+#### 存放數據至隱含模型
+
+低版本的 spring-mvc 中，異常處理方法只允許接收 `Exception` 參數，可以改返回 `ModelAndView` 解決。
+
+5.0以上的 spring-mvc，異常處理方法可以直接接收 `Model`、`Map`等隱含模型參數。
+
+```java
+/**
+ * 異常處理方法01:處理數學異常
+ */
+@ExceptionHandler(value = ArithmeticException.class)
+public String exHandler01(Exception ex, Model model){
+    System.out.println("exHandler01 working ...");
+    System.out.println(ex.getMessage());
+
+    model.addAttribute("message", ex.getMessage());
+    return "/error.jsp";
+}
+/**
+ * 異常處理方法: 處理所有異常
+ */
+@ExceptionHandler(value = {Exception.class})
+public ModelAndView exHandlerAll(Exception ex){
+    System.out.println("exHandlerAll working ...");
+
+    ModelAndView modelAndView = new ModelAndView();
+    modelAndView.setViewName("/error.jsp");
+    modelAndView.addObject("message", ex.getMessage());
+
+    return modelAndView;
+}
+```
+
+#### 集中處理異常類
+
+**<font color="ff0000">控制器下的異常處理方法，只能處理單個控制器下的異常</font>**，對於某些異常處理的方式，每個控制器的處理方法都是一致的，spring-mvc 提供創建集中處理異常的類，讓這些共用的異常處理方法不用重複書寫，也便於維護。
+
+集中處理異常的類，同樣需要被IOC容器管理，spring-mvc 提供 `@ControllerAdvice` 註解，被該註解修飾的類，表示該類為集中處理異常類。
+
+```java
+// 註記為集中處理異常類
+@ControllerAdvice
+public class ExceptionCenterController {
+    /**
+     * 異常處理方法01:處理數學異常
+     */
+    @ExceptionHandler(value = ArithmeticException.class)
+    public String exHandler01(Exception ex, Model model){
+        System.out.println("exHandler01 working ...");
+        System.out.println(ex.getMessage());
+
+        model.addAttribute("message", ex.getMessage());
+        return "/error.jsp";
+    }
+
+    /**
+     * 異常處理方法: 處理所有異常
+     */
+    @ExceptionHandler(value = {Exception.class})
+    public ModelAndView exHandlerAll(Exception ex){
+        System.out.println("exHandlerAll working ...");
+
+        ModelAndView modelAndView = new ModelAndView();
+        modelAndView.setViewName("/error.jsp");
+        modelAndView.addObject("message", ex.getMessage());
+
+        return modelAndView;
+    }
+}
+```
+
+#### 全局異常處理與區域異常處理
+
+spring-mvc 決定異常處理方法的流程：
+
++ 查找控制器內是否有異常處理方法可以處理(精確優先)
++ 查找全局異常處理類內是否有異常處理方法可以處理(精確優先)
+
+> 如果控制器與全局同時都可以處理該異常，但是控制器內是比較模糊的，那還是會使用控制器內的。
+>
+> 自掃門前雪的概念，只要控制器內有且能處理，那就不會使用全局異常處理類。
+
+#### @ResponseStatus
+
+`@ResponseStatus`
+
++ 作用：標註在「自定義異常」上，當沒有任何處理時，可以自訂異常處理頁面上訊息與狀態碼
++ 位置：自定義異常類上
++ 屬性：
+  + reason：指定錯誤頁面的 message 訊息
+  + value：指定錯誤頁面狀態碼
+
+範例：
+
+``` java
+@ResponseStatus(reason = "登入失敗", value = HttpStatus.NOT_ACCEPTABLE)
+public class LoginException extends RuntimeException {
+}
+```
+
+#### SimpleMappingExceptionResolver
+
+簡單映射異常解析器，可以通過在配置的方式來進行異常的處理。下面列出配置常用的屬性：
+
++ Properties exceptionMappings：key 異常全類名，value 要去的視圖名
++ String exceptionAttribute：指定對應錯誤在request域中的key，默認是exception
+
+> SimpleMappingExceptionResolver 優先級是最低的，所以會等 `@ExceptionHandler`、`@ReqponseStatus`、spring-mvc自己的異常解析器都無法處理時，才會輪到它解析
+
+### 總結
+
+#### 九大組件
+
+##### 九大組件初始化地方
+
+DispatcherServlet
+
+```java
+protected void initStrategies(ApplicationContext context) {
+    initMultipartResolver(context);
+    initLocaleResolver(context);
+    initThemeResolver(context);
+    initHandlerMappings(context);
+    initHandlerAdapters(context);
+    initHandlerExceptionResolvers(context);
+    initRequestToViewNameTranslator(context);
+    initViewResolvers(context);
+    initFlashMapManager(context);
+}
+```
+
+#### spring-mvc 運行流程
+
+1. 前端控制器(DispatcherServlet)收到請求，調用 doDispatcher 進行處理
+2. 根據HandlerMapping中保存的請求映射信息找到可以處理當前請求的，處理器執行鏈(包含攔截器)
+3. 根據當前的處理器找到它的適配器
+4. 攔截器的preHandle先執行
+5. 適配器執行目標方法，返回ModelAndView
+   1. ModelAttribute標註的方法先執行
+   2. 執行目標方法前確認目標方法參數
+      1. 有註解
+      2. 沒註解
+         1. 根據類型作判斷
+         2. 自定義類型
+            1. 從隱含模型中找，如果有就使用隱含模型中的值
+            2. 如果隱含模型沒有，看是否為session域中屬性，如果是嘗試獲取，失敗拋出異常
+            3. 隱含模型中沒有，且不是session域中屬性，使用反射創建
+   3. 執行目標方法
+6. 攔截器的postHandle執行
+7. 處理目標方法執行結果(進行頁面渲染)
+   1. 如果有異常使用異常解析器處理異常，處理完還是返回ModelAndView
+   2. 調用render方法進行頁面渲染
+      1. 視圖解析器根據視圖名稱得到視圖對象
+      2. 視圖名稱調用render方法渲染頁面
+   3. 執行攔截器的的afterCompletion
+
+![image-20210415162449207](images/Spring MVC/image-20210415162449207.png)
+
+#### spring-mvc 與 spring 整合
+
+雖然你可以直接讓 spring 與 spring-mvc 使用同一份配置文件，但是當項目龐大時，配置文件難以維護。所以**<font color="ff0000">將spring-mvc與spring的配置分開，並且整合是有其必要性的。</font>**
+
+spring-mvc 配置文件就來配置配置和網站轉發邏輯以及網站功能有關的。(視圖解析器、文件上傳解析器、支持Ajax等)
+
+spring 的配置文件，來配置和業務有關的(事務控制、數據源等)。
+
+有兩種方法：
+
+1. 使用 `<import>` 標籤合併兩份配置文件(只有一個IOC容器)
+2. spring-mvc 與 spring 各自獨立一個IOC容器
+   1. spring-mvc 只掃描 `@Controller` 以及 `@ControllerAdvice`標註的組件
+   2. spring 掃描全部組件，排除 `@Controller` 和 `@ControllerAdvice`標註的組件
+
+##### spring 容器的創建與獲取
+
+Spring 通過監聽器`ContextLoaderListener` ，在服務器啟動時加載 Spring 配置文件，創建IOC容器，並存放到`ServletContext`域中，並提供另外一個工具類 `WebApplicationContextUtils` 供使用者獲得應用上下文對象。
+
+操作步驟：
+
+1. 導入 `spring-web` 依賴
+2. web.xml 中配置 `ContextLoaderListener`監聽器，並配置全局初始化參數`contextConfigLocation`指定配置文件位置。
+3. 通過 `WebApplicationContextUtils`獲得應用程序上下文對象`ApplicationContext`
+
+``` xml
+<?xml version="1.0" encoding="UTF-8"?>
+<web-app xmlns="http://xmlns.jcp.org/xml/ns/javaee"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://xmlns.jcp.org/xml/ns/javaee http://xmlns.jcp.org/xml/ns/javaee/web-app_4_0.xsd"
+         version="4.0">
+    <!-- 配置初始化參數 -->
+    <context-param>
+        <param-name>contextConfigLocation</param-name>
+        <!-- 指定配置文件路徑 -->
+        <param-value>classpath:applicationContext.xml</param-value>
+    </context-param>
+    <!-- 配置監聽器 -->
+    <listener>
+        <listener-class>org.springframework.web.context.ContextLoaderListener</listener-class>
+    </listener>
+</web-app>
+```
+
+##### 進階組件掃描
+
+`<context:component-scan>`標籤通過`base-package`屬性指定包名，進行組件掃描。
+
+兩個子標籤`context:exclude-filter`和`context:include-filter` 執行包掃描時包含或不包含的範圍。
+
+它們都有兩個屬性：
+
++ type：指定表達式的類型。常見的有annotation、aspectj、regex等。
++ expression：表達式的內容。
+
+> `context:component-scan`默認的策略是掃描指定包下的全部。
+>
+> **<font color="ff0000">所以使用`context:exclude-filter`時，必須禁用 `context:component-scan` 標籤的默認策略，包含過濾才會有效，通過設置 `use-default-filters=false`。</font>**
+
+##### 父子容器問題
+
+spring 源碼中有個默認行為，當有兩個IOC容器同時存在時，spring 容器是作為父容器，spring-mvc 是作為子容器，**<font color="ff0000">當子容器要取父容器內的組件是OK的，但是父容器要取子容器內組件是不允許的。</font>**
+
+所以在 service 想要注入 controller 是不可行的，spring 的父IOC容器取不到 spring-mvc 的子IOC容器內東西。
