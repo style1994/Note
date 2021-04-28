@@ -441,7 +441,7 @@ REST 是 Representational State Transfer 的縮寫。可譯為「具象狀態傳
 
    > 當 required 默認是 true，且沒有該請求參數時，會出現異常
 
-#### 處理請頭
+#### 處理請求頭
 
 + `@RequestHeader`
 
@@ -456,7 +456,7 @@ REST 是 Representational State Transfer 的縮寫。可譯為「具象狀態傳
     + defaultValue：當沒有該請求 header 時，設置其默認值。預設默認值為`null`。
 
     ``` java
-  @RequestMapping(value = "/books/{id}", method = RequestMethod.PUT)
+    @RequestMapping(value = "/books/{id}", method = RequestMethod.PUT)
     @ResponseBody
     public String updateBook(@PathVariable("id") String id, @RequestHeader("User-Agent") String userAgent) {
         System.out.println("瀏覽器訊息：" + userAgent);
@@ -490,7 +490,6 @@ REST 是 Representational State Transfer 的縮寫。可譯為「具象狀態傳
         return "/success.jsp";
     }
     ```
-  
 
 #### 處理請求 Cookie
 
@@ -963,7 +962,7 @@ public @ModelAttrubute("currenUser")User doLogin(@RequestParam("username") usern
 
 總結：`@ModelAttribute` 適合為其它 `@RequestMapping` 修飾的方法在 `request` 域中設置共用的數據，這樣就不必在每個控制器方法中重複書寫在`Model`設置共用數據的操作。
 
-### 視圖解析器-進階
+### 視圖解析器
 
 方法返回值為視圖名時，視圖解析器就跟將該視圖名拚上前後綴組成完整的頁面路徑。
 
@@ -990,9 +989,9 @@ public String test02(){
 }
 ```
 
-#### 源碼分析出的結論
+#### 源碼分析出
 
-1. IOC容器內如果有配置視圖解析器，就使用所有有配置的視圖解析器(不只能配置一個)。
+1. IOC容器內如果有配置視圖解析器，就使用配置的視圖解析器(不只能配置一個)。
 2. 所有控制器的方法返回值，最終都會封裝成`ModelAndView`對象
 3. 視圖解析器功能就是解析視圖名稱，得到View對象
 4. 視圖解析器得到View(視圖)的流程就是，嘗試執行**每個**視圖解析器解析視圖名稱，如果解析失敗，就嘗試下一個視圖解析器，直到有一個成功為止。
@@ -1062,17 +1061,18 @@ public String test02(){
 
 ##### 使用JstlView步驟
 
-1. 讓spring-mvc管理國際化資源文件：
+1. 導入Jstl一概
+2. 讓spring-mvc管理國際化資源文件：
    1. 在IOC容器配置資源文件管理器：`ResourceBundleMessageSource`
    2. <font color="ff0000">配置Bean的ID為 `messageResource`(必須使用該名稱)</font>
    3. 配置資源文件管理器屬性`basename`：指定基礎路徑
    4. 配置資源文件管理器屬性`defaultEncoding`：指定文件編碼
-2. JSP頁面引入標籤庫 `fmt`
-3. `<fmt:message>` 取得國際化文件訊息
+3. JSP頁面引入標籤庫 `fmt`
+4. `<fmt:message>` 取得國際化文件訊息
 
 > 想要使用JstlView一定要經過spring-mvc處理，如果該JSP頁面不是由spring-mvc跳轉處理，那就不會有效果。
 >
-> 例如：你直接在請求URL訪問WEB-INF外的`*.JSP`文件，會是由Tomcat配置的Servlet處理，所以沒有使用到JstlView。
+> 例如：你直接在請求URL直接訪問WEB-INF外的`*.JSP`文件，會是由Tomcat配置的Servlet處理，所以沒有使用到JstlView。
 
 範例：
 
@@ -1298,105 +1298,6 @@ public class ViewResolverController {
 }
 ```
 
-### 源碼分析
-
-#### doDispatcher()方法處理流程
-
-1. getHandler()：根據當前請求地址找到能處理這個請求的目標處理器類(處理器)
-2. getHandlerAdapter()：根據當前處理器類獲取到能執行這個處理器方法的適配器。
-3. 使用上步驟獲取的適配器(AnnotationMethodHandlerAdapter)執行目標方法
-4. 目標方法執行後會返回一個ModeAndView對象
-5. 根據ModeAndView的信息轉發到具體的頁面，並可以在域中取出ModelAndView中的模型數據
-
-#### spring-mvc 9大組件
-
-DispatcherServlet 中有幾個引用類型的的屬性，spring-mvc 在工作的時候，關鍵位置都是由這些組建完成的。
-
-**共通點：9大組件都是接口，制定規範。**
-
-+ MultipartResolver：文件上傳解析器
-+ LocaleResolver：區域訊息解析器和國際化有關
-+ ThemeResolver：主題解析器，強大的主題效果更換
-+ HandlerMapping：映射器
-+ HandlerAdapter：適配器
-+ HandlerExceptionResolver：異常解析器
-+ RequestToViewNameTranslator：當方法沒有返回值時，將請求URL轉換為視圖名
-+ FlashMapManager：spring-mvc中允許redirect攜帶數據的功能
-+ ViewResolver：視圖解析器
-
-9大組件初始化方法： initStrategies
-
-組件的初始化：去IOC容器中找這個組件，如果沒有就使用默認配置。**有些組件是使用類型找的，有些則是使用id去找得。**
-
-#### 如何確定目標方法每一個參數的值
-
-思路：
-
-1. 創建**隱含模型**(`BindingAwareModelMap`)，用於最後將裡面的數據時放到 `request` 域中
-
-2. 找到所有`@ModelAttribute`註解標註的方法，遍歷解析
-
-   1. 確定`@ModelAttribute`標註標註方法的參數值
-
-      1. 取得目標方法每一個參數的類型
-
-      2. 創建一個與目標方法參數相同長度的數組 `args`，用來保存每一個參數的值
-
-      3. 遍歷 `arg` 數組
-
-         1. 解析參數，獲得參數信息
-
-         2. 取得目標方法參數上標註的註解
-
-         3. <font color="ff0000">如果參數有註解</font>，解析註解的信息並針對不同註解進行賦值
-
-            1. `@ModelAttribute`和`@SessionAttribute`，是兩個特例，它們只是將value屬性值賦值`attrName`，並沒有在這進行賦值。
-            2. 有一些註解也只會解析，不會在這馬上進行賦值，例如： `@ModeAttribute`和`@SessionAttribute`。
-
-         4. <font color="ff0000">如果參數沒有註解</font>
-
-            1. `resolveCommonArgument`方法確認是否為普通參數，參數進行賦值。(普通參數就是指Servlet原生API)
-            2. 判斷參數是否以解析，如果已解析就為參數進行賦值
-            3. 判斷是否有默認值，如果有就為參數進行賦值
-            4. 判斷是參數類型是否為`Model`或`Map`類型或旗下類型，如果是將**隱含模型**引用賦值給參數
-            5. 判斷是否相容其它類型，是的話參數進行複值
-            6. 判斷是否為簡單數據類型，如: Integer、String等，是的話賦值`paramName`變數為「""」。
-            7. 都不符合上述判斷，賦值`attrName`為「""」。
-
-            > 自定義類型，可以分為兩種：標註解(`@ModelAttribue`或`@SessionAttribute`)、沒標註解。
-            >
-            > 有註解：attrName為註解的value值。
-            >
-            > 沒註解：attrName為「""」。
-
-         5. 對那些還沒進行賦值的進行賦值，分類為有註解的參數和沒註解的參數都有，這裡只針某幾種對重點介紹。
-
-            **<font color="ff0000">以下為最重要的邏輯，決定POJO的基礎值</font>**
-            
-            1. `paramName != null`的簡單類型，進行request參數值與參數值的綁定(相同名稱)。
-            2. `attrName != null`<font color="ff0000">(`@SessionAttribute`、`@ModuleAttribute`、沒註解的POJO都歸屬於這邊，還有一些其他的註解) </font>
-               
-               1. 解析ModelAttribute(只是方法名稱翻譯)，並不單單處理與`@ModelAttribute`相關，以業務邏輯來看的話，是解析 attrName 取得 key 值，決定參數的基礎值是要使用哪種方式取得。
-               
-               2. 如果 attrName 為空，使用類型名稱作為key值(小寫)
-               
-               3. 判斷`Model`(隱含模型)中是否有與key值對應的數據，如果有參數綁定該數據
-               
-               4. 判斷 `session` 域中是否有與key值相同的鍵，如果有從 `session` 域中取出key值對應的數據，並賦值給參數，<font color="ff0000">如果session數據值為 `null` 拋出異常。</font>
-               
-                  > 當你使用 @SessionAttribute"s" 註解修飾你的控制器類，value 屬性所指定值，就是**聲明 session 域中將會有這些屬性**，可是這很可能觸發上面那段邏輯的異常。(聲明後但是隱含模型和session域都沒有)。這也是<font color="ff0000">**不要使用@SessionAttribute"s" 註解的原因**</font>，如果要設置session屬性，請使用原生API。
-               
-               5. 如果在 `Model`和 `Session`中都沒有，使用反射創建一個新的自定義類物件。
-            3. 使用數據綁定氣將請求參數值賦綁定物件屬性(同名)。
-
-   2. 取得`@ModelAttribute`的 value 值，如果沒有設定，則已方法返回值作為其值
-
-   3. 執行`@ModelAttribute`註解標註的方法
-
-   4. 隱含模型保存`@ModelAttribute`方法返回值，key值就是上步驟解析出的 value 值。
-
-3. 找到目標方法，解析並執行(解析步驟與上面解析`@ModleAttribute`一樣)
-
 ### 表單標籤
 
 可以實現將模型數據中的屬性和HTML表單元素綁定，以實現**表單數據更便捷編輯**和**表單值的回顯**。
@@ -1440,9 +1341,9 @@ DispatcherServlet 中有幾個引用類型的的屬性，spring-mvc 在工作的
          3. itemLabel：下拉選單要顯示的值，指定集合元素的屬性。
          4. itemValue：下拉選單的值，指定集合元素的屬性。
 
-### 方法參數與請求參數的綁定原理
+### 數據綁定原理與思想
 
-將請求的數據轉換為POJO物件，涉及到數據的轉換、數據的格式化、數據的校驗，在源碼章節中，詳細說明如何決定控制器方法中POJO的參數基礎物件是如何取得，但是如何將請求中數據設置到這個參數的基礎物件卻沒有詳細探討。
+將請求的數據(字符串)轉換為POJO物件，涉及到數據的轉換、數據的格式化、數據的校驗，在源碼章節中，詳細說明如何決定控制器方法中POJO的參數基礎物件是如何取得，但是如何將請求中數據設置到這個參數的基礎物件卻沒有詳細探討。
 
 1. spring-mvc將request對象及目標方法參數的基礎物件傳遞給`WebDataBinderFactory` 對象，創建`DataBinder`對象(數據綁定器)。
 
@@ -1454,7 +1355,7 @@ DispatcherServlet 中有幾個引用類型的的屬性，spring-mvc 在工作的
 
 > 可以從上述得知，控制器方法的POJO對象賦值是由一個個的組件相互配合完成。
 
-### 自定義類型轉換器
+#### 自定義類型轉換器
 
 spring-mvc定義了3種類型的轉換器接口，實現任意一個轉換器接口都可以作為自定義轉換器，註冊到`ConversionServiceFactoryBean`中。
 
@@ -1498,7 +1399,7 @@ spring-mvc定義了3種類型的轉換器接口，實現任意一個轉換器接
       ``` xml
       <!-- 配置自訂ConversionService，通過ConversionServiceFactoryBean的幫助 -->
       <bean id="conversionServiceFactory" class="org.springframework.context.support.ConversionServiceFactoryBean">
-          <!-- 轉換器集合中配置我們自定義的類型轉換器 -->
+          <!-- 配置我們自定義的類型轉換器 -->
           <property name="converters">
               <set>
                   <bean class="org.learning.convert.MyConverter"/>
@@ -1514,13 +1415,15 @@ spring-mvc定義了3種類型的轉換器接口，實現任意一個轉換器接
    2. 範例：
 
       ``` xml
-      <!-- 告訴spring-mvc不要使用默認的ConversionService，使用自定義的  -->
+      <!-- 告訴spring-mvc不要使用默認的ConversionService，使用自定義的ConversionService  -->
           <mvc:annotation-driven conversion-service="conversionServiceFactory" />
       ```
 
       
 
-案例：自定義一個字串轉字串的轉換器，把前綴帶有「upper:」的字串，轉為大寫；前綴帶有「lower:」的字串，轉為小寫。
+#### 案例
+
+自定義一個字串轉字串的轉換器，把前綴帶有「upper:」的字串，轉為大寫；前綴帶有「lower:」的字串，轉為小寫。
 
 + 轉換器：
 
@@ -1569,7 +1472,7 @@ spring-mvc定義了3種類型的轉換器接口，實現任意一個轉換器接
 + RequestMappingHandlerAdapter
 + ExceptionHandlerExceptionResolver
 
-還提供了以下功能：
+提供了以下功能：
 
 1. 支持使用自定義 ConversionService 與 Converter 進行類型轉換
 2. 支持使用 `@NumberFormatter`、`@DateTimeFormat` 註解完成數據的格式化
@@ -1578,12 +1481,35 @@ spring-mvc定義了3種類型的轉換器接口，實現任意一個轉換器接
 
 #### 源碼分析
 
-spring-mvc 中有個 `BeanDefinitionParser` 接口，專門用來解析配置文件中的標籤。`mvc:annotation-driven`標籤所對應的解析實現類為 `AnnotationDrivenBeanDefinitionParser`。
+spring-mvc 中有個 `BeanDefinitionParser` 接口，專門用來解析配置文件中的標籤。`mvc:annotation-driven`標籤所對應的配置解析實現類為 `AnnotationDrivenBeanDefinitionParser`。
 
-分析在之前的學習中，加上`mvc:annotation-drivn`標籤後，錯誤就消失的場景。有以下兩個場景：
+分析在之前的學習中，加上`mvc:annotation-driven`標籤後，錯誤就消失的場景。有以下兩個場景：
 
 + 使用 `mvc:default-servlet-handler` 標籤解決靜態資源訪問404，加上後控制器方法的處理卻失效。
-+ 使用 `mvc-view-controller` 標籤解決，直接跳轉頁面的請求，使用配置替代編寫控制器方法。加上後控制器方法的處理失效
+
+  比較加不加上`mvc:default-servlet-handler` 與 `mvc:annotation-driven` 後 `HandleMappings`和`HandlerAdapters`的變化：
+
+  | 分類                             | HandlerMappings                                              | HandlerAdapters                                              |
+  | -------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
+  | 全部不加                         | BeanNameUrlHandlerMapping<br />**DefaultAnnotationHandlerMapping** | HttpRequestHandlerAdapter<br />SimpleControllerHandlerAdapter<br />**AnnotationMethodHandlerAdapter** |
+  | 加 `mvc:default-servlet-handler` | BeanNameUrlHandlerMapping<br />SimpleUrlHandlerMapping       | HttpRequestHandlerAdapter<br />SimpleControllerHandlerAdapter |
+  | 全部加上                         | RequestMappingHandlerMapping<br />BeanNameUrlHandlerMapping<br />SimpleUrlHandlerMapping | HttpRequestHandlerAdapter<br />SimpleControllerHandlerAdapter<br />RequestMappingHandlerAdapter |
+
+  + 全部不加  ：動態資源能訪問，靜態資源不可以。
+
+    動態資源能訪問原因是`DefaultAnnotationHandlerMapping`中`handlerMap`屬性記錄著資源的映射訊息。
+
+    靜態資源不能訪問的原因是，這兩個映射器中的`handlerMap`屬性都沒有該映射訊息。
+
+  + 加 `mvc:default-servlet-handler`：動態資源不可訪問，靜態資源可以訪問
+
+    原本處理動態映射的`DefaultAnnotationHandlerMapping`映射器消失了，所以無法處理動態資源。
+
+    多了`SimpleUrlHandlerMapping`映射器，它的作用是把所有請求直接交給`tomcat`，所以才可以處理靜態資源。
+
+  + 全部加上：動態、靜態資源都可以訪問
+
+    多了`RequestMappingHandlerMapping`，內部保存動態資源的映射訊息，所以動態資源又可以匹配了，而且它的順位是第一，所以它無法處理時，會交由後面的映射器處理，最後輪到`SimpleUrlHandlerMapping`，靜態資源又能處理了。
 
 ### 數據格式化
 
@@ -2203,22 +2129,26 @@ spring-mvc 配置
 
 spring-mvc 在解決國際化問題非常容易。我們只需要關注以下三步驟：
 
-1. 編寫國際化資源文件
+1. 引入JSTL依賴，spring會自動使用`JstlView`處理視圖渲染
 
-2. 配置資源管理器`ResouceBundleMessageSource`，讓spring-mvc管理資源文件
+2. 編寫國際化資源文件
+
+3. 配置資源管理器`ResouceBundleMessageSource`，讓spring-mvc管理資源文件
 
    如果要讓，spring-mvc管理國際化資源文件，有以下步驟：
 
    1. 在IOC容器配置資源文件管理器：`ResourceBundleMessageSource`
    2. <font color="ff0000">配置Bean的ID為 `messageResource`(必須使用該名稱)</font>
-   3. 配置資源文件管理器屬性`basename`：指定基礎路徑
+   3. 配置資源文件管理器屬性`basename`：指定基礎路徑。<font color="ff0000">如果國際化資源文件不是直接放在類路徑下，而是資料夾下，資料夾路徑名稱也要寫上。</font>
    4. 配置資源文件管理器屬性`defaultEncoding`：指定文件編碼
 
-3. 頁面取值
+4. 頁面取值 `<fmt:message>`標籤
 
-國際化中最重要的是區域訊息，有了區域訊息才能知道要去哪個文件取值。spring-mvc 都是透過九大組件之一的區域訊息解析器`LocaleResolver`取得，默認使用 `AcceptHeaderLocaleResolver`實現類。
+#### 區域訊息解析器
 
-`Locale` 為 spring-mvc 資源的原生API，所以可以在控制器方法定義該類型參數，spring-mvc 會透過區域訊息解析器幫你獲得。
+國際化中最重要的是區域訊息，所有需要用到區域訊息的地方，spring-mvc 都是透過九大組件中的區域訊息解析器`LocaleResolver`取得，默認使用 `AcceptHeaderLocaleResolver`實現類。
+
+`Locale` 為 spring-mvc 支援的原生API，所以可以在控制器方法定義該類型參數，spring-mvc 會透過區域訊息解析器幫你獲得。
 
 想在程序中獲取國際化資源訊息，可以使用 `@Autowired` 注入 `ResouceBundleMessageSource` 或 `MessageSource`，就可以通過它獲得國際化訊息。
 
@@ -2229,7 +2159,7 @@ spring-mvc 在解決國際化問題非常容易。我們只需要關注以下三
 | SessionLocaleResolver      | 區域訊息從session域中獲取            |
 | CookieLocaleResolver       | 區域訊息從cookie中獲取               |
 
-
+#### 自定義區域訊息解析器
 
 自定義自己的區域訊息解析器步驟：
 
@@ -2320,6 +2250,54 @@ spring-mvc 提供 `LocaleChangeInterceptor`，它的功能是從請求參數中�
 </form:form>
 <a href="login?locale=en_US">英文</a>
 <a href="login?locale=zh_TW">中文</a>
+```
+
+#### 程序中獲取國際化訊息
+
+在類中使用`@Autowired`注入`MessageSource`，配置的資源管理器(`ResourceBundleMessageSource`)，為該接口實現類，得到配置的資源管理器後，就可以通過方法取得它管理的國際化資源文件中的訊息。
+
+範例：
+
+```xml
+    <!-- spring-mvc 容器只包含控制器組件 -->
+    <context:component-scan base-package="org.learning" use-default-filters="false">
+        <context:include-filter type="annotation" expression="org.springframework.stereotype.Controller"/>
+    </context:component-scan>
+
+    <mvc:default-servlet-handler/>
+    <mvc:annotation-driven />
+	<!-- 配置資源管理器 -->
+    <bean id="messageSource" class="org.springframework.context.support.ResourceBundleMessageSource">
+        <property name="defaultEncoding" value="UTF-8"/>
+        <property name="basename" value="i18n"/>
+    </bean>
+```
+
+```properties
+# i18n_zh_TW.properties
+welcome=歡迎
+# i18n_en_US.properties
+welcome=WELCOME
+```
+
+``` java
+@Controller
+public class UserController {
+    @Autowired
+    MessageSource messageSource;
+
+    public UserController() {
+        System.out.println("UserController");
+    }
+
+    @RequestMapping("/test01")
+    public String test01(Locale locale){
+        String msg = messageSource.getMessage("welcome", null, locale);
+        System.out.println(msg);
+        return "/index.jsp";
+    }
+}
+```
 
 ### 異常處理
 
@@ -2503,15 +2481,106 @@ public class LoginException extends RuntimeException {
 
 > SimpleMappingExceptionResolver 優先級是最低的，所以會等 `@ExceptionHandler`、`@ReqponseStatus`、spring-mvc自己的異常解析器都無法處理時，才會輪到它解析
 
-### 總結
+### 源碼分析
 
-#### 九大組件
+#### DispatcherServlet 結構分析
+
+繼承結構：得知`DispatcherServlet ` 是一個 servlet
+
++ HttpServlet
+  + HttpServletBean
+    + FrameworkServlet
+      + DispatcherServlet 
+
+doGet、doPost等都由`FrameworkServlet` override了，統一調用 `processRequest`方法，方法內調用`doService`方法，該方法為抽象方法，由`DispatcherServlet `實現。
+
+`doService`方法內最終調用了`doDispatcher`方法，這也是要研究的地方。
+
+#### doDispatcher方法處理流程
+
+1. `checkMultipart`：檢查請求是否文件上傳請求
+
+2. `getHandler`：根據映射器(HandlerMapping)找到執行鍊(HandlerExecutionChain)，內部紀錄攔截器和控制器類，如果沒有找到執行鍊則拋出異常。
+
+3. `getHandlerAdapter`： 獲取能執行控制器類的適配器(HandlerAdapter)。
+
+4. `applyPreHandler`：執行方執行鍊中所有攔截器的`preHandle`方法
+
+5. `ha.handle`：適配器執行目標方法，方法返回值作為視圖名，設置保存到 `ModelAndView`對象。
+
+   > 目標方法無論怎麼寫，適配器執行完成後的信息都會封裝成ModelAndView
+
+6. `applyDefaultViewName`：如果目標方法執行完，沒有給視圖名稱，會使用九大組件中的`RequestToViewNameTranslator` 將請求url轉為視圖名稱。
+
+7. `applyPostHandle`：執行執行鍊中所有攔截器的`postHandle`方法
+
+8. `processDispatcherResult `：目標方法執行返回的`ModelAndView`，執行渲染視圖操作。
+
+##### getHandler 細節
+
+根據`request`請求對象中的訊息，依序確認每個映射器(`HandlerMapping`)的`handlerMap`屬性是否紀錄相應映射訊息，有找到返回執行鍊(`HandlerExecutionChain`)
+
+spring-mvc源碼：
+
+```java
+@Nullable
+protected HandlerExecutionChain getHandler(HttpServletRequest request) throws Exception {
+    if (this.handlerMappings != null) {
+        for (HandlerMapping mapping : this.handlerMappings) {
+            HandlerExecutionChain handler = mapping.getHandler(request);
+            if (handler != null) {
+                return handler;
+            }
+        }
+    }
+    return null;
+}
+```
+
+##### getHandlerAdapter 細節
+
+通過執行鍊(HandlerExecutionChain)得到控制器類，依序確認每個適配器(HandlerAdapter)中，是否有支持控制器類的適配器，有的話返回該適配器，最終沒有任何符合則拋出異常。
+
+spring-mvc源碼：
+
+```java
+protected HandlerAdapter getHandlerAdapter(Object handler) throws ServletException {
+		if (this.handlerAdapters != null) {
+			for (HandlerAdapter adapter : this.handlerAdapters) {
+				if (adapter.supports(handler)) {
+					return adapter;
+				}
+			}
+		}
+		throw new ServletException("No adapter for handler [" + handler +
+				"]: The DispatcherServlet configuration needs to include a HandlerAdapter that supports this handler");
+	}
+```
+
+#### spring-mvc 9大組件
+
+DispatcherServlet 中有幾個引用類型的的屬性，spring-mvc 在工作的時候，關鍵位置都是由這些組件完成的。
+
+**共通點：9大組件都是接口，制定規範。**
+
++ MultipartResolver：文件上傳解析器
++ LocaleResolver：區域訊息解析器和國際化有關
++ ThemeResolver：主題解析器，強大的主題效果更換
++ HandlerMapping：映射器
++ HandlerAdapter：適配器
++ HandlerExceptionResolver：異常解析器
++ RequestToViewNameTranslator：當方法沒有返回值時，將請求URL轉換為視圖名
++ FlashMapManager：spring-mvc中允許redirect攜帶數據的功能
++ ViewResolver：視圖解析器
+
+9大組件初始化方法： initStrategies
+
+組件的初始化：去IOC容器中找這個組件，如果沒有就使用默認配置。**注意：有些組件是通過類型查找，有些則是通過id。**
 
 ##### 九大組件初始化地方
 
-DispatcherServlet
-
 ```java
+// DispatcherServlet.class
 protected void initStrategies(ApplicationContext context) {
     initMultipartResolver(context);
     initLocaleResolver(context);
@@ -2524,6 +2593,69 @@ protected void initStrategies(ApplicationContext context) {
     initFlashMapManager(context);
 }
 ```
+
+組件的初始化：區容器中找這個組件，如果沒有找到就使用默認配置。但是有些組件是通過類型有些是通過ID查找。
+
+#### 如何確定目標方法每一個參數的基礎值
+
+基礎值：決定參數的POJO物件是從隱含模型中獲取、session域中獲取、使用反射創建。決定完基礎值後才會藉由數據綁定器的幫助，將請求參數值與設置近基礎值。
+
+流程：
+
+1. 取得目標方法每一個參數的類型
+
+2. 創建一個與目標方法參數相同長度的數組 `args`，用來保存每一個參數的值
+
+3. 遍歷 `arg` 數組
+
+   1. 解析參數，獲得參數信息
+
+   2. 取得目標方法參數上標註的註解
+
+   3. <font color="ff0000">如果參數有註解</font>，解析註解的信息並針對不同註解進行賦值
+
+      1. `@ModelAttribute`和`@SessionAttribute`，是兩個特例，它們只是將value屬性值賦值`attrName`，並沒有在這進行賦值。
+      2. 有一些註解也只會解析，不會在這馬上進行賦值，例如： `@ModeAttribute`和`@SessionAttribute`。
+
+   4. <font color="ff0000">如果參數沒有註解</font>
+
+      1. `resolveCommonArgument`方法確認是否為普通參數，參數進行賦值。(普通參數就是指Servlet原生API)
+      2. 判斷參數是否以解析，如果已解析就為參數進行賦值
+      3. 判斷是否有默認值，如果有就為參數進行賦值
+      4. 判斷是參數類型是否為`Model`或`Map`類型或旗下類型，如果是將**隱含模型**引用賦值給參數
+      5. 判斷是否相容其它類型，是的話參數進行複值
+      6. 判斷是否為簡單數據類型，如: Integer、String等，是的話賦值`paramName`變數為「""」。
+      7. 都不符合上述判斷，賦值`attrName`為「""」。
+
+      > 自定義類型，可以分為兩種：標註解(`@ModelAttribue`或`@SessionAttribute`)、沒標註解。
+      >
+      > 有註解：attrName為註解的value值。
+      >
+      > 沒註解：attrName為「""」。
+
+   5. 對那些還沒進行賦值的進行賦值，分類為有註解的參數和沒註解的參數都有，這裡只針某幾種對重點介紹。
+
+      **<font color="ff0000">以下為最重要的邏輯，決定POJO的基礎值</font>**
+
+      1. `paramName != null`的簡單類型，進行request參數值與參數值的綁定(相同名稱)。
+
+      2. `attrName != null`<font color="ff0000">(`@SessionAttribute`、`@ModuleAttribute`、沒註解的POJO都歸屬於這邊，還有一些其他的註解) </font>
+
+         1. 解析ModelAttribute(只是方法名稱翻譯)，並不單單處理與`@ModelAttribute`相關，以業務邏輯來看的話，是解析 attrName 取得 key 值，決定參數的基礎值是要使用哪種方式取得。
+
+         2. 如果 attrName 為空，使用類型名稱作為key值(小寫)
+
+         3. 判斷`Model`(隱含模型)中是否有與key值對應的數據，如果有參數綁定該數據
+
+         4. 判斷 `session` 域中是否有與key值相同的鍵，如果有從 `session` 域中取出key值對應的數據，並賦值給參數，<font color="ff0000">如果session數據值為 `null` 拋出異常。</font>
+
+            > 當你使用 @SessionAttribute"s" 註解修飾你的控制器類，value 屬性所指定值，就是**聲明 session 域中將會有這些屬性**，可是這很可能觸發上面那段邏輯的異常。(聲明後但是隱含模型和session域都沒有)。這也是<font color="ff0000">**不要使用@SessionAttribute"s" 註解的原因**</font>，如果要設置session屬性，請使用原生API。
+
+         5. 如果在 `Model`和 `Session`中都沒有，使用反射創建一個新的自定義類物件。
+
+      3. <font color="ff0000">使用數據綁定器將請求參數綁定至基礎值中。</font>
+
+### 總結
 
 #### spring-mvc 運行流程
 
