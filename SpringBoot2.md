@@ -354,10 +354,12 @@ server.port=8888
 
 ##### @Import
 
-+ 作用：導入類到Bean中
++ 作用：註冊Bean或導入配置類
 + 使用位置：配置類或組件類上(@Configuration、@Component、@Controller等)
 + 屬性：
-  + value：Class類型，指定要導入到IOC的類。導入後的Bean ID 為全類名。
+  + value：Class類型，指定要導入的類。Bean ID 為全類名。
+
+> 配置類其實也是一個組件，所以也會被註冊IOC容器
 
 ##### @ComponentScan
 
@@ -516,6 +518,8 @@ public class MyConfig {
    car.brand=SYM
    ```
 
+
+
 ### 自動配置原理入門
 
 #### 引導加載自動配置類
@@ -539,9 +543,11 @@ public @interface SpringBootConfiguration {
 
 ##### @ComponentScan
 
-指定要掃描的基礎包
+指定組件掃描的基礎包
 
 ##### @EnableAutoConfiguration
+
+開啟自動配置，SpringBoot的自動配置就是使用此註解開啟
 
 ``` java
 @Target(ElementType.TYPE)
