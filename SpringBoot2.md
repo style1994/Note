@@ -354,24 +354,58 @@ server.port=8888
 
 ##### @Import
 
-+ 作用：註冊Bean或導入配置類
++ 作用：@Configuration(配置類)、ImportSelector、ImportBeanDefinitionRegistrar或常規的組件類
 + 使用位置：配置類或組件類上(@Configuration、@Component、@Controller等)
 + 屬性：
-  + value：Class類型，指定要導入的類。Bean ID 為全類名。
+  + value：指定類型。
+
+ImportSelector 是接口，自定義導入選擇器可以實現該接口，接口定義了以下方法：
+
++ String[] selectImports(AnnotationMetadata importingClassMetadata) 
+
+  方法返回要導入組件全類名數組，方法形參 importingClassMetadata 獲取當前類(標註@Import)的所有註解訊息
+
+ImportBeanDefinitionRegistrar 是接口，自定義組件註冊器可以實現該接口，接口定義了以下方法：
+
++ void registerBeanDefinitions(AnnotationMetadata importingClassMetadata, BeanDefinitionRegistry registry)
+
+  Spring會調用自定義組件註冊器的該方法註冊Bean，該方法有兩個形參：
+
+  + importingClassMetadata：獲取當前類(標註@Import)的所有註解訊息
+  + registry：註冊器，可以調用該註冊器將組件註冊在IOC容器中。
 
 > 配置類其實也是一個組件，所以也會被註冊IOC容器
 
 ##### @ComponentScan
 
-+ 作用：指定組件掃描的基礎包
++ 作用：組件掃描的規則
 
 + 使用位置：配置類上
 
 + 屬性：
 
-  + value：全包名
+  + value：指定基礎包
+  + useDefaultFilters：是否啟用默認規則，默認將@Component、@Controller、@Service、@Repository註解標註的組件全加入IOC容器
+  + includeFilters：指定**只包含規則**，欲使用該功能必須將`useDefaultFilters`設置為`false`。該屬性接收 `@Filter` 註解，每個 `@Filter`代表一個過濾規則，可以指定多個，先後順序有影響。
+  + excludeFilters：指定**排除規則**，該屬性接收 `@Filter` 註解，每個 `@Filter`代表一個過濾規則，可以指定多個，先後順序有影響。
 
-  > @SpringBootApplication註解中就包含了@ComponentScan所以兩者不可以一起使用
+
+
+@Filter
+
++ 作用：指定一種過濾規則
++ 使用位置：`@ComponentScan` 的 `includeFilters` 和 `excludeFilters` 屬性。
++ 屬性：
+  + type：FilterType 類型，指定是按照什麼類型進行過濾。有以下幾種：
+    + `FilterType.ANNOTATION`：按照註解。
+    + `FilterType.ASSIGNABLE_TYPE`：按照給定類型，包含其子類或實現類。
+    + `FilterType.ASPECTJ`：按照ASPECTJ表達式。
+    + `FilterType.REGEX`：按照正則表達式。
+    + `FilterType.CUSTOM`：自定義過濾類型，實現TypeFilter接口。
+  + classes：指定過濾類型的值，供過濾類型ANNOTATION、ASSIGNABLE_TYPE、CUSTOM使用
+  + pattern：指定過濾類型的值，供過濾類型ASPECTJ、REGEX使用
+
+> @SpringBootApplication註解中就包含了@ComponentScan所以兩者不可以一起使用
 
 ##### @Conditional
 
@@ -562,7 +596,7 @@ public @interface EnableAutoConfiguration {
 
 ###### @AutoConfigurationPackage：
 
-自動導入包是什麼東西？可以查看其註解定義：
+自動配置包是什麼東西？可以查看其註解定義：發現它其實就是個 Import
 
 ``` java
 @Target(ElementType.TYPE)
@@ -571,8 +605,8 @@ public @interface EnableAutoConfiguration {
 @Inherited
 @Import(AutoConfigurationPackages.Registrar.class)
 public @interface AutoConfigurationPackage {
-	// 利用 Register 給容器導入一系列組件
-    // 將主程序包下的所有組件導入
+	// 利用 Register 給容器導入BasePackages組件
+    // 內部紀錄基礎路徑，以後可以編寫自動配置類時可以通過AutoConfigurationPackages.get方法獲取所有基礎路徑
 }
 ```
 
@@ -600,7 +634,7 @@ static class Registrar implements ImportBeanDefinitionRegistrar, DeterminableImp
 
 ###### @Import(AutoConfigurationImportSelector.class)
 
- 查看AutoConfigurationImportSelector類`selectImports`方法，返回要導入組件名稱數組，而所有的組件名都是調用`getAutoConfigurationEntry`得到的。
+ `@Import`可以通過實現ImportSelector接口，來自定義自己的導入規則，查看AutoConfigurationImportSelector類`selectImports`方法，該方法會返回所有要導入組件名稱的數組，而所有的組件名都是調用`getAutoConfigurationEntry`得到的。
 
 ```java
 @Override
@@ -613,6 +647,241 @@ public String[] selectImports(AnnotationMetadata annotationMetadata) {
 }
 ```
 
+查看`getAutoConfigurationEntry`方法內部，預設加載的組件是由`getCandidateConfigurations`(獲取候選配置)方法得到，接下來對這些默認的配置進行去重複、排除、過濾，最終返回要加載的組件(配置)。
+
+``` java
+protected AutoConfigurationEntry getAutoConfigurationEntry(AnnotationMetadata annotationMetadata) {
+    if (!isEnabled(annotationMetadata)) {
+        return EMPTY_ENTRY;
+    }
+    AnnotationAttributes attributes = getAttributes(annotationMetadata);
+    // 獲取候選配置
+    List<String> configurations = getCandidateConfigurations(annotationMetadata, attributes);
+    // 去重複
+    configurations = removeDuplicates(configurations);
+    // 排除
+    Set<String> exclusions = getExclusions(annotationMetadata, attributes);
+    checkExcludedClasses(configurations, exclusions);
+    configurations.removeAll(exclusions);
+    // 過濾
+    configurations = getConfigurationClassFilter().filter(configurations);
+    fireAutoConfigurationImportEvents(configurations, exclusions);
+    return new AutoConfigurationEntry(configurations, exclusions);
+}
+```
+
+查看獲取候選配置方法 `getCandidateConfigurations` ，分析它是從哪裡得到默認配置。從以下源碼可以得知候選配置是由 `SpringFactoriesLoader`的靜態方法`loadFactoryNames`得到，再深入研究。
+
+``` java
+protected List<String> getCandidateConfigurations(AnnotationMetadata metadata, AnnotationAttributes attributes) {
+    // 獲取候選配置
+    List<String> configurations = SpringFactoriesLoader.loadFactoryNames(getSpringFactoriesLoaderFactoryClass(),
+                                                                         getBeanClassLoader());
+    Assert.notEmpty(configurations, "No auto configuration classes found in META-INF/spring.factories. If you "
+                    + "are using a custom packaging, make sure that file is correct.");
+    return configurations;
+}
+```
+
+注意`loadSpringFactories`方法，是從該方法獲取默認配置
+
+``` java
+public static List<String> loadFactoryNames(Class<?> factoryType, @Nullable ClassLoader classLoader) {
+    ClassLoader classLoaderToUse = classLoader;
+    if (classLoaderToUse == null) {
+        classLoaderToUse = SpringFactoriesLoader.class.getClassLoader();
+    }
+    String factoryTypeName = factoryType.getName();
+    // 返回候選配置
+    return loadSpringFactories(classLoaderToUse).getOrDefault(factoryTypeName, Collections.emptyList());
+}
+```
+
+終於找到候選配置是從哪裡讀取，在類路徑下的`META-INF/spring.factories`，我們剛剛得到候選配置為130個，`spring-boot-autoconfigure` jar下就有該文件，# Auto Configure 註解下的的默認配置類就剛好是130項。
+
+結論：**<font color="ff0000">SpringBoot默認將所有場景一開始就進行加載</font>**，然後在通過**按需加載**機制，只為應用加載需要的場景，會下章節介紹。
+
+``` java
+private static Map<String, List<String>> loadSpringFactories(ClassLoader classLoader) {
+		Map<String, List<String>> result = cache.get(classLoader);
+		if (result != null) {
+			return result;
+		}
+
+		result = new HashMap<>();
+		try {
+            // 默認配置文件，類路徑下META-INF/spring.factories
+			Enumeration<URL> urls = classLoader.getResources(FACTORIES_RESOURCE_LOCATION);
+            // 以下省略...
+			
+
+#### 按需加載
+
+雖然SpringBoot所有自動配置默認啟動時全部加載，但是SpringBoot通過@Conditional註解來條件配置，只有所依賴的jar被導入時，這個自動配置才會生效。以下的 `AopAutoConfiguration` 就是很好的例子
+
+``` java
+@Configuration(proxyBeanMethods = false)
+@ConditionalOnProperty(prefix = "spring.aop", name = "auto", havingValue = "true", matchIfMissing = true)
+public class AopAutoConfiguration {
+
+	@Configuration(proxyBeanMethods = false)
+	@ConditionalOnClass(Advice.class)
+	static class AspectJAutoProxyingConfiguration {
+
+		@Configuration(proxyBeanMethods = false)
+		@EnableAspectJAutoProxy(proxyTargetClass = false)
+		@ConditionalOnProperty(prefix = "spring.aop", name = "proxy-target-class", havingValue = "false",
+				matchIfMissing = false)
+		static class JdkDynamicAutoProxyConfiguration {
+
+		}
+	// 以下省略部分源碼
+```
+
+#### 總結
+
++ SpringBoot先加載所有自動配置類 `*AutoConfiguration`
++ 每個自動配置類按照條件決定是否生效，默認都會綁定`*Properties`類的值。而`*Properties`和配置文件進行了綁定。
++ 生效的自動配置類就會給ioc容器裝配許多組件
++ 只要容器中有這些組件，相當於這些功能啟動
++ 訂製化配置
+  + 用戶向容器添加底層組件，自動配置類會以用戶配置為優先
+  + 用戶去自動配置類看組件是綁定配置文件的哪個值，直接修改配置文件
+
+### 最佳實踐
+
++ 引入場景依賴
++ 查看自動配置了那些(選做)
+  + 自己分析，引入場景對應的自動配置一般都生效
+  + 配置文件中 debug=true 開啟自動配置報告。Negative(不生效)、Positive(生效)
++ 是否要修改
+  + 參照文檔修改配置項
+    + 文檔 Application Properties 章節
+    + 自己分析，`*Properties`綁定哪配置文件的那些值
+  + 自定義加入或者替換組件
+    + @Bean、@Component …
+  + 自定義器 `*Customizer`
+  + …
+
+### 開發小工具
+
+#### Lombok
+
+簡化 JavaBean 開發，簡化編寫JavaBean的固定操作，如：建立getter、setter、toString等等。開發人員只要關注JavaBean的屬性即可。
+
+1. 引入依賴
+
+   ``` xml
+   <dependency>
+       <groupId>org.projectlombok</groupId>
+       <artifactId>lombok</artifactId>
+   </dependency>
+   ```
+
+2. 安裝lombok插件
+
+3. 使用lombok註解修飾 JavaBean，lombok就會幫你生成getter、setter、toString等方法
+
+lombok註解：
+
+| 註解               | 說明                                        |
+| ------------------ | ------------------------------------------- |
+| @Data              | 生成getter、setter                          |
+| @NoArgConstructor  | 生成無參構造器                              |
+| @AllArgConstructor | 生成全參構造器                              |
+| @ToString          | 生成toString                                |
+| @EqualsAndHashCode | 生成 equals 和 hashcode方法                 |
+| @Slf4j             | 注入日誌類，之後使用日誌通過log屬性即可使用 |
+
+#### dev-tools
+
+作用是熱更新，以後項目有什麼改變，只要項目重新編譯(IDEA快捷鍵是Ctrl + F9)，dev-tool就會重新啟動項目
+
+1. 引入依賴
+
+   ``` xml
+   <dependency>
+       <groupId>org.springframework.boot</groupId>
+       <artifactId>spring-boot-devtools</artifactId>
+       <optional>true</optional>
+   </dependency>
+   ```
+
+#### Spring Initializr
+
+快速幫你創建一個SpringBoot初始化項目，建立目錄結構、引入場景依賴、建立主程序等等。強烈建議使用
+
+### 核心功能
+
+#### yaml配置文件
+
+SpringBoot可以在全局編寫 `application.properties` 外，還兼容YAML格式的配置文件。
+
+##### yaml簡介
+
+YAML 是「YAML Ain't Markup Language」(YAML不是一種標記語言)的遞歸縮寫。在開發這種語言時，YAML 的意思其實是：「Yet Another Markup Language」(仍是一種標記語言)
+
+非常適合用來做以數據為中心的配置文件。
+
+注意事項：
+
++ yaml 與 properties 配置文件可以同時存在
++ properties 的優先級高於 yaml
++ ymal配置文件的副檔名可以是「.yaml」或「.yml」
+
+##### 基本語法
+
++ key: value kv之間有1空格
++ 大小敏感
++ 使用縮進表示層級關係
++ 縮進不允許TAB，只允許空格
++ 縮進空格數不重要，只要相同層級的元素左邊對齊即可
++ #表示注釋
++ 字符串無須加引號，如果要加，「''」與「""」表示字串內容，轉義符號(\\)會不解析或解析
+
+##### 數據類型
+
++ 字面量：單個的、不可在分的值。date、boolean、number、string
+
+  ``` yaml
+  k: v
+  ```
+
++ 對象：鍵值對的集合。map、hash、set、object
+
+  ```yaml
+  #行內寫法
+  k: {k1:v1,k2:v2,k3:v3}
+  #多行寫法
+  K:
+    k1: v1
+    k2: v2
+    K3: v3
+  ```
+
++ 數組：一組按次序排列的值。array、list、queue
+
+  ``` yaml
+  #行內寫法
+  k: [v1,v2,v3]
+  #多行寫法
+  k:
+   - v1
+   - v2
+   - v3
+  ```
+
+##### 範例
+
+將下列 JavaBean，與 yaml 配置文件進行綁定
+
+``` java
+```
+
+``` yaml
+```
+
 
 
 ## SpringBoot響應式編程
+
