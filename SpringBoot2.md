@@ -719,7 +719,7 @@ private static Map<String, List<String>> loadSpringFactories(ClassLoader classLo
 
 雖然SpringBoot所有自動配置默認啟動時全部加載，但是SpringBoot通過@Conditional註解來條件配置，只有所依賴的jar被導入時，這個自動配置才會生效。以下的 `AopAutoConfiguration` 就是很好的例子
 
-``` java
+​``` java
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(prefix = "spring.aop", name = "auto", havingValue = "true", matchIfMissing = true)
 public class AopAutoConfiguration {
@@ -784,14 +784,14 @@ public class AopAutoConfiguration {
 
 lombok註解：
 
-| 註解               | 說明                                        |
-| ------------------ | ------------------------------------------- |
-| @Data              | 生成getter、setter                          |
-| @NoArgConstructor  | 生成無參構造器                              |
-| @AllArgConstructor | 生成全參構造器                              |
-| @ToString          | 生成toString                                |
-| @EqualsAndHashCode | 生成 equals 和 hashcode方法                 |
-| @Slf4j             | 注入日誌類，之後使用日誌通過log屬性即可使用 |
+| 註解               | 說明                                           |
+| ------------------ | ---------------------------------------------- |
+| @Data              | 生成getter、setter、toString、hashCode、equals |
+| @NoArgConstructor  | 生成無參構造器                                 |
+| @AllArgConstructor | 生成全參構造器                                 |
+| @ToString          | 生成toString                                   |
+| @EqualsAndHashCode | 生成 equals 和 hashcode方法                    |
+| @Slf4j             | 注入日誌類，之後使用日誌通過log屬性即可使用    |
 
 #### dev-tools
 
@@ -831,13 +831,13 @@ YAML 是「YAML Ain't Markup Language」(YAML不是一種標記語言)的遞歸�
 
 ##### 基本語法
 
-+ key: value kv之間有1空格
++ key: value **<font color="ff0000">kv之間有1空格</font>**
 + 大小敏感
 + 使用縮進表示層級關係
 + 縮進不允許TAB，只允許空格
 + 縮進空格數不重要，只要相同層級的元素左邊對齊即可
 + #表示注釋
-+ 字符串無須加引號，如果要加，「''」與「""」表示字串內容，轉義符號(\\)會不解析或解析
++ 字符串無須加引號，如果使用「''」與「""」表示字串內容，轉義符號(\\)會不解析或解析
 
 ##### 數據類型
 
@@ -847,11 +847,11 @@ YAML 是「YAML Ain't Markup Language」(YAML不是一種標記語言)的遞歸�
   k: v
   ```
 
-+ 對象：鍵值對的集合。map、hash、set、object
++ 對象：鍵值對的集合。map、hash、object
 
   ```yaml
   #行內寫法
-  k: {k1:v1,k2:v2,k3:v3}
+  k: {k1: v1, k2: v2, k3: v3}
   #多行寫法
   K:
     k1: v1
@@ -859,11 +859,11 @@ YAML 是「YAML Ain't Markup Language」(YAML不是一種標記語言)的遞歸�
     K3: v3
   ```
 
-+ 數組：一組按次序排列的值。array、list、queue
++ 數組：一組按次序排列的值。array、list、set、queue
 
   ``` yaml
   #行內寫法
-  k: [v1,v2,v3]
+  k: [v1, v2, v3]
   #多行寫法
   k:
    - v1
@@ -876,12 +876,242 @@ YAML 是「YAML Ain't Markup Language」(YAML不是一種標記語言)的遞歸�
 將下列 JavaBean，與 yaml 配置文件進行綁定
 
 ``` java
+@Data
+@ConfigurationProperties(prefix = "user")
+@Component
+public class User {
+    private String userName;
+    private Boolean boss;
+    private Date birth;
+    private Integer age;
+    private Pet pet;
+    private String[] interests;
+    private List<String> animals;
+    private Map<String,Object> score;
+    private Set<Double> salaries;
+    private Map<String,List<Pet>> allPets;
+}
+
 ```
 
 ``` yaml
+user:
+  userName: James
+  boss: true
+  birth: 1994/01/01
+  age: 18
+  pet: {name: godzilla, weight: 36}
+  interests: [reading, pcGames]
+  animals:
+    - cat
+    - dog
+    - rabbit
+  score:
+    math: 100
+    chinese: 88
+    history: 90
+    english: 60
+  salaries: [36000, 40000, 60000]
+  allPets:
+    sick:
+      - {name: godzilla, weight: 36}
+      - {name: littileBlack, weight: 29}
+    health:
+      - {name: buck, weight: 18}
 ```
 
+##### 顯示提示
 
+在編寫`application.yaml`，SpringBoot相關的設定都有提示，自定義的類也可以讓其顯示提示，只需要以下設定：(官方文檔[Configuration Metadata](https://docs.spring.io/spring-boot/docs/current/reference/html/appendix-configuration-metadata.html#configuration-metadata)的Configuring the Annotation Processor小節)
+
+1. 導入依賴
+
+   ``` xml
+   <dependency>
+       <groupId>org.springframework.boot</groupId>
+       <artifactId>spring-boot-configuration-processor</artifactId>
+       <optional>true</optional>
+   </dependency>
+   
+   ```
+
+### Web開發
+
+web開發章節參照官方文檔 [Spring Boot Features](https://docs.spring.io/spring-boot/docs/current/reference/html/spring-boot-features.html#boot-features) 中 7. Developing Web Applications 小節
+
+#### SpringMVC 自動配置概覽
+
+大多數場景我們都無須自定義配置，SpringBoot作了以下默認配置：
+
++ 內容協商視圖解析器和BeanName視圖解析器
++ 支持靜態資源(包括webjars)
++ 自動註冊 Converter、GenericConverter、Formatter
++ 支持 HttpMessageConverter(後來我們配合內容協商原理)
++ 自動註冊 MessageCodesResolver (國際化使用)
++ 靜態index.html頁支持
++ 自定義 Favicon
++ 自動使用 ConfigurableWebBindingInitializer (DataBinder負責將請求數據綁訂到 JavaBean 上)
++ …
+
+#### 簡單功能分析
+
+##### 靜態資源訪問
+
+###### 靜態資源目錄
+
+SpringBoot默認靜態資源目錄放置在「類路徑下」的 `/static` (or `/public` or `resources` or `/META-INF/resources`)資料夾，ServletContext 的根目錄
+
++ 原理：
+
+SpringBoot默認「靜態資源處理器」可以處理所有請求，但是**靜態資源處理器的優先級最低**。當請求到來時，會先由其他處理器來處理請求，當所有處理器都不能處理，才會交由靜態資源處理器來處理，它會去這些資料夾中找相同名稱的靜態資源，如果找不到，則404。
+
++ 例：
+
+  有個Controller可以處理一個與靜態資源名稱相同的請求，那麼該請求到來時，結果是由Controller處理，而不是返回靜態資源，因Controller優先級較高且能處理。
+
+###### 修改靜態資源訪問目錄
+
+ 如果不想要使用SpringBoot默認的幾個靜態資源目錄，可以使用以下設定修改
+
+``` yaml
+spring:
+  web:
+    resources:
+      static-locations: [classpath:/hello/]
+```
+
+修改資源訪問目錄後 `META-INF/resources` 依舊是資源目錄，為什麼 ? 
+
+###### 修改靜態資源訪問前綴
+
+SpringBoot靜態資源映射是 `/**`，默認是無前綴，只要輸入「項目路徑/靜態資源名稱」就可以訪問對應靜態資源。如果想為靜態資源訪問路徑設定前墜，可以通過以下設置：
+
+``` yaml
+spring:
+  mvc:
+    static-path-pattern: "/resources/**"
+```
+
+> 當前項目 + static-path-pattern + 靜態資源名稱
+
+###### webjars
+
+webjars相當於將CSS、JS這些東西弄成一個jar包，可以訪問webjars的官網(https://www.webjars.org/)找到相關資源，例如：JQurey。可以使用Maven將該依賴導入。
+
+SpringBoot支持映射webjars中，映射路徑為 `/webjars/**`，可以獲取webjars內的靜態資源。
+
+> `**`所填寫的路徑要按造依賴包裡面的路徑書寫。
+>
+> webjars中的靜態檔案都放在META-INF/resources/webjars資料夾下。META-INF/resources本就是默認的靜態資源目錄，webjars資料夾對應訪問路徑/webjars開頭，其實就跟一般靜態文件訪問寫法一致。
+
+##### 歡迎頁支持
+
+SpringBoot可以使用兩種方式支持的歡迎頁，當訪問應用根目錄時，就會顯示歡迎頁。
+
++ 靜態資源路徑下放置名稱為 index.html 的歡迎頁
+  + **但是不可以配置靜態資源請求前綴**
++ 編寫Controller處理/index請求
+
+##### Facicon 網站圖標
+
+SpringBoot會在靜態資源路徑內找尋 `favicon.ico`檔案，並將其作為網站圖標。
+
++ **但是不可以配置靜態資源請求前綴**，會導致網站圖標失效
+
+##### 靜態資源配置原理
+
++ SpringBoot啟動時加載 `*AutoConfiguration` 類(自動配置類)
+
++ SpringMVC功能的自動配置類 `WebMvcAutoConfiguration`
+
++ 確認 `WebMvcAutoConfiguration` 是否生效
+
+  ``` java
+  @Configuration(proxyBeanMethods = false)
+  @ConditionalOnWebApplication(type = Type.SERVLET)
+  @ConditionalOnClass({ Servlet.class, DispatcherServlet.class, WebMvcConfigurer.class })
+  @ConditionalOnMissingBean(WebMvcConfigurationSupport.class)
+  @AutoConfigureOrder(Ordered.HIGHEST_PRECEDENCE + 10)
+  @AutoConfigureAfter({ DispatcherServletAutoConfiguration.class, TaskExecutionAutoConfiguration.class,
+  		ValidationAutoConfiguration.class })
+  public class WebMvcAutoConfiguration {
+  ```
+
++ 靜態內部類`EnableWebMvcConfiguration` 構造器注入許多元件
+
+  + ResourceProperties：讀取 spring.resources 的配置
+  + WebMvcProperties：讀取 spring.mvc 的配置
+  + WebProperties：讀取 spring.web 的配置
+  + WebMvcRegistrations
+  + ResourceHandlerRegistrationCustomizer：找到所有資源處理自定義器組件
+  + ListableBeanFactory： spring的BeanFactory
+
++ 靜態內部類中有addResourceHandlers方法就是用來處理靜態文件映射
+
+``` java
+@Override
+protected void addResourceHandlers(ResourceHandlerRegistry registry) {
+    super.addResourceHandlers(registry);
+    // 可以通過spring.web.resources.app-mapping 禁用所有靜態資源設置
+    if (!this.resourceProperties.isAddMappings()) {
+        logger.debug("Default resource handling disabled");
+        return;
+    }
+    ServletContext servletContext = getServletContext();
+    // 設置webjars的映射
+    addResourceHandler(registry, "/webjars/**", "classpath:/META-INF/resources/webjars/");
+    // 設置靜態文件映射 讀取spring.mvc.static-path-pattern值，默認值為/**
+    addResourceHandler(registry, this.mvcProperties.getStaticPathPattern(), (registration) -> {
+ /* 設置靜態資源目錄 讀取spring.web.resources.static-locations 
+        默認值: "classpath:/META-INF/resources/",
+			"classpath:/resources/", "classpath:/static/", "classpath:/public/"
+*/        registration.addResourceLocations(this.resourceProperties.getStaticLocations());
+        if (servletContext != null) {
+            registration.addResourceLocations(new ServletContextResource(servletContext, SERVLET_LOCATION));
+        }
+    });
+}
+```
+
++ 歡迎頁面設置
+
+``` java
+@Bean
+public WelcomePageHandlerMapping welcomePageHandlerMapping(ApplicationContext applicationContext,
+                                                           FormattingConversionService mvcConversionService, ResourceUrlProvider mvcResourceUrlProvider) {
+    WelcomePageHandlerMapping welcomePageHandlerMapping = new WelcomePageHandlerMapping(
+        new TemplateAvailabilityProviders(applicationContext), applicationContext, getWelcomePage(),
+        this.mvcProperties.getStaticPathPattern());
+    welcomePageHandlerMapping.setInterceptors(getInterceptors(mvcConversionService, mvcResourceUrlProvider));
+    welcomePageHandlerMapping.setCorsConfigurations(getCorsConfigurations());
+    return welcomePageHandlerMapping;
+}
+```
+
+```java
+WelcomePageHandlerMapping(TemplateAvailabilityProviders templateAvailabilityProviders,
+                          ApplicationContext applicationContext, Resource welcomePage, String staticPathPattern) {
+    // 如果靜態文件路徑下有歡迎頁且 靜態文件請求為 /** 則設置歡迎頁的forward
+    // 解釋了為什麼修改了靜態文件請求前綴，歡迎頁功能就失效
+    if (welcomePage != null && "/**".equals(staticPathPattern)) {
+        logger.info("Adding welcome page: " + welcomePage);
+        setRootViewName("forward:index.html");
+    }
+    // 如果存在歡迎頁的模板
+    else if (welcomeTemplateExists(templateAvailabilityProviders, applicationContext)) {
+        logger.info("Adding welcome page template: index");
+        setRootViewName("index");
+    }
+}
+```
+
+重點：
+
++ 可以通過設置 `spring.web.resources.add-mapping` 為 `false` 禁用所有靜態資源默認配置
++ 可以通過設置 `spring.mvc.static-path-pattern` 設置靜態支援請求前綴
++ 可以通過設置 `spring.web.resources.static-locations` 設置靜態文件資料夾 
++ 修改默認靜態頁面請求的前綴，歡迎頁功能失效
++ 靜態文件目錄下的歡迎頁優先級高於模板目錄下的歡迎頁
 
 ## SpringBoot響應式編程
 
