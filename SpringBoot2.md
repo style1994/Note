@@ -953,6 +953,14 @@ web開發章節參照官方文檔 [Spring Boot Features](https://docs.spring.io/
 + 自動使用 ConfigurableWebBindingInitializer (DataBinder負責將請求數據綁訂到 JavaBean 上)
 + …
 
+If you want to keep those Spring Boot MVC customizations and make more [MVC customizations](https://docs.spring.io/spring/docs/5.3.6/reference/html/web.html#mvc) (interceptors, formatters, view controllers, and other features), you can add your own `@Configuration` class of type `WebMvcConfigurer` but **without** `@EnableWebMvc`.
+
+如果你想要客製化SpringMvc的底層組件，**不使用@EnableWebMvc註解，使用`@Configuration` + WebMvcConigurer 自定義規則。**
+
+If you want to provide custom instances of `RequestMappingHandlerMapping`, `RequestMappingHandlerAdapter`, or `ExceptionHandlerExceptionResolver`, and still keep the Spring Boot MVC customizations, you can declare a bean of type `WebMvcRegistrations` and use it to provide custom instances of those components.
+
+If you want to take complete control of Spring MVC, you can add your own `@Configuration` annotated with `@EnableWebMvc`, or alternatively add your own `@Configuration`-annotated `DelegatingWebMvcConfiguration` as described in the Javadoc of `@EnableWebMvc`.
+
 #### 簡單功能分析
 
 ##### 靜態資源訪問
@@ -1018,7 +1026,7 @@ SpringBoot會在靜態資源路徑內找尋 `favicon.ico`檔案，並將其作�
 
 + **但是不可以配置靜態資源請求前綴**，會導致網站圖標失效
 
-##### 靜態資源配置原理
+#### 靜態資源配置原理
 
 + SpringBoot啟動時加載 `*AutoConfiguration` 類(自動配置類)
 
@@ -1112,6 +1120,282 @@ WelcomePageHandlerMapping(TemplateAvailabilityProviders templateAvailabilityProv
 + 可以通過設置 `spring.web.resources.static-locations` 設置靜態文件資料夾 
 + 修改默認靜態頁面請求的前綴，歡迎頁功能失效
 + 靜態文件目錄下的歡迎頁優先級高於模板目錄下的歡迎頁
+
+#### 請求參數處理
+
+##### 請求映射
+
++ @RequestMapping
++ Rest 風格支持(使用 HTTP 請求方式的動詞來表示對資源的操作)
+  + 以前： /getUser 獲取用戶 /deleteUser 刪除用戶 /updateUser 修改用戶 /saveUser 新增用戶
+  + 現在：/user GET-獲取用戶 /user DELETE-刪除用戶 /user PUT-修改用戶 /user POST-新增用戶
+  + 核心：HiddenHttpMethodFilter
+    + 用法：表單 method=post，傳遞參數 _method=put
+
+想要在SpringBoot使用`HiddenHttpMethodFilter`，配置 `spring.mvc.hiddenmethod.filter.enable = true`。可以在 `WebMvcAutoConfiguration` 源碼中體現：
+
+``` java
+@Bean
+// 當容器中存在HiddenHttpMethodFilter則使用者配置Bean
+@ConditionalOnMissingBean(HiddenHttpMethodFilter.class)
+// 當配置沒有這項時，默認關閉
+@ConditionalOnProperty(prefix = "spring.mvc.hiddenmethod.filter", name = "enabled", matchIfMissing = false)
+public OrderedHiddenHttpMethodFilter hiddenHttpMethodFilter() {
+    return new OrderedHiddenHttpMethodFilter();
+}
+```
+
+SpringBoot 也對 `@RequestMapping` 做了擴展，以往要編寫 REST 風格 API，都要在 method 屬性指定HTTP請求方式
+
++ @RquestMapping
+  + @GetMapping
+  + @PostMapping
+  + @PutMapping
+  + @DeleteMapping
+  + …
+
+直接使用擴展註解，那麼就可以省略指定 method 屬性的動作。
+
+ ##### HiddenHttpMethodFilter 原理
+
+當表單提交想要支持 REST 風格，需要透過該過濾器進行轉換，來分析其運作的原理，其內部源碼如下：
+
+``` java
+@Override
+protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+    throws ServletException, IOException {
+	
+    HttpServletRequest requestToUse = request;
+
+    if ("POST".equals(request.getMethod()) && request.getAttribute(WebUtils.ERROR_EXCEPTION_ATTRIBUTE) == null) {
+        String paramValue = request.getParameter(this.methodParam);
+        if (StringUtils.hasLength(paramValue)) {
+            String method = paramValue.toUpperCase(Locale.ENGLISH);
+            if (ALLOWED_METHODS.contains(method)) {
+                requestToUse = new HttpMethodRequestWrapper(request, method);
+            }
+        }
+    }
+
+    filterChain.doFilter(requestToUse, response);
+}
+```
+
+``` java
+private static class HttpMethodRequestWrapper extends HttpServletRequestWrapper {
+
+    private final String method;
+
+    public HttpMethodRequestWrapper(HttpServletRequest request, String method) {
+        super(request);
+        this.method = method;
+    }
+
+    @Override
+    public String getMethod() {
+        return this.method;
+    }
+}
+```
+
+源碼解析：
+
++ 過濾器會處理HTTP請求方式為 POST 且沒有錯誤的請求。
++ 過濾器獲取 `_method` 請求參數，判斷是否存在
++ `_method` 不區分大小寫
++ 過濾器判斷是否支持所指定的請求方式，過濾器支持以下方式：
+  + PUT
+  + DELETE
+  + PATCH
++ 原來的 request 會經過 `HttpMethodRequestWrapper` 的包裝
+  + `HttpMethodRequestWrapper` 構造器接收 method，過濾器將`_method`傳入
+  + `HttpMethodRequestWrapper` 重寫了 `HttpServletRequest` 的 `getMethod`方法，將方法返回值改為`_mehtod`參數
++ 過濾器將包裝過的 request 傳遞下去
+
+Spring 在進行請求映射就是調用 request 的 `getMethod`，Spring 取得的 request 為包裝過的，這也解釋為什麼 POST 表單變成其他請求。
+
+##### 自定義請求方式的參數名稱
+
+`HttpMethodRequestWrapper` 默認是使用 `_method` 作為請求方是參數的名稱。只要容器中配置了 `HttpMethodRequestWrapper` 那麼自動配置就不會在進行配置。
+
++ 手動配置 `OrderedHiddenHttpMethodFilter`(源碼中是配這個bean)。
++ 調用 `setMethodParam` 方法將設置為自定義的參數名稱。
+
+``` java
+@Configuration
+class MyConfig(){
+    @Bean
+    public OrderedHiddenHttpMethodFilter orderedHiddenHttpMethodFilter(){
+        OrderedHiddenHttpMethodFilter filter = new OrderedHiddenHttpMethodFilter();
+        filter.setMethodParam("httpMethod");
+        return filter;
+    }
+}
+```
+
+#### 普通參數與基本註解
+
+##### 註解
+
++ @PathVariable：獲取URL上的佔位符
++ @RequestParam
++ @RequestHeader
++ @ModelAttribute
++ @RequestBody
++ @CookieValue
++ @SessionAttribute
+
++ @MatrixVariable：獲取矩陣變量
+
+  + 屬性：
+    + value：矩陣變量的key
+    + pathVar：指定路徑變量的名稱
+
+  矩陣變量需要在SpringBoot中手動開啟，根據RFC3986的規範，**<font color="ff0000">矩陣變量應該綁定在路徑變量</font>**中。若是有多個矩陣變量，應該使用「;」進行分隔，一個矩陣變量有多個值，使用「,」進行分隔，或者命名多個重複的key即可。
+
+  例如：`/cars/sell;low=34;brand=byd,audi,yd` 或是 `/cars/sell;low=34;brand=byd;brand=audi;brand=yd`。
+
+  > **每層**路徑都可以宣告在矩陣變量中，所以才所是綁定在**路徑變量**。與我們常用的queryString不一樣，兩個可以同時使用，比較特別的變數可以定義在矩陣變量中，與查詢字串區分開。
+  >
+  > 例如：被禁用cookie後，會改由請求參數傳遞 jsessionid，可以改成使用矩陣變量方式傳遞，跟請求參數區分開來。
+
+##### 開啟矩陣變量
+
+SpringBoot默認關閉矩陣變量，如果要使用矩陣變量，需要手動開啟。對於URL路徑的解析是通過 `UrlPathHelper`，通過調整屬性值來開啟矩陣變量
+
++  `removeSemicolonContent` 是否移除URL分號內容，因為矩陣變量是使用分號來作為分隔符，所以當該屬性默認為 `true` 時，矩陣變量失效
+
+``` java
+@Override
+public void configurePathMatch(PathMatchConfigurer configurer) {
+    if (this.mvcProperties.getPathmatch()
+        .getMatchingStrategy() == WebMvcProperties.MatchingStrategy.PATH_PATTERN_PARSER) {
+        configurer.setPatternParser(new PathPatternParser());
+    }
+    configurer.setUseSuffixPatternMatch(this.mvcProperties.getPathmatch().isUseSuffixPattern());
+    configurer.setUseRegisteredSuffixPatternMatch(
+        this.mvcProperties.getPathmatch().isUseRegisteredSuffixPattern());
+    this.dispatcherServletPath.ifAvailable((dispatcherPath) -> {
+        String servletUrlMapping = dispatcherPath.getServletUrlMapping();
+        if (servletUrlMapping.equals("/") && singleDispatcherServlet()) {
+            // 使用默認的UrlPathHelper
+            UrlPathHelper urlPathHelper = new UrlPathHelper();
+            urlPathHelper.setAlwaysUseFullPath(true);
+            configurer.setUrlPathHelper(urlPathHelper);
+        }
+    });
+}
+```
+
+在Web的自動配置概覽有提到，如何克制化SpringMvc，通過在`@Configuration`配置類，將一個實現 `WebMvcConfigurer` 接口的實現類註冊到ioc容器中，通過 override 接口的默認方法，來替代默認配置。
+
+複寫 `WebMvcConfigurer` 接口中的 `configurePathMatch` 方法，替換`WebMvcAutoConfiguration`中，`configurePathMatch`方法的默認行為，就可以開啟矩陣註解。 
+
+有兩個方式：
+
+1. 讓我們的配置類實現該接口，並且重寫`configurePathMatch`方法
+2. 通過`@Bean`註冊至容器中
+
+範例：
+
+``` java
+@Configuration
+public class WebConfig implements WebMvcConfigurer {
+    @Override
+    public void configurePathMatch(PathMatchConfigurer configurer) {
+        UrlPathHelper helper = new UrlPathHelper();
+        helper.setRemoveSemicolonContent(false);
+
+        configurer.setUrlPathHelper(helper);
+    }
+}
+```
+
+```java
+@RestController
+public class MatrixController {
+
+    /**
+     * 獲取矩陣變量1
+     */
+    @GetMapping("/user/{userId}")
+    public Map<String, Object> test01(@PathVariable("userId") String userId,
+                                      @MatrixVariable("username") String username) {
+        HashMap<String, Object> map = new HashMap<>();
+        map.put("userId", userId);
+        map.put("username", username);
+
+        return map;
+    }
+
+    /**
+     * 矩陣變量2
+     * 路徑不同層，有相同名稱的矩陣變量，需要指定路徑變量名稱
+     */
+    @GetMapping("/user/{departmentId}/{userId}")
+    public Map<String, Object> test02(@PathVariable("departmentId") String departmentId,
+                                      @PathVariable("userId") String userId,
+                                      @MatrixVariable(value = "name", pathVar = "departmentId") String departmentName,
+                                      @MatrixVariable(value = "name", pathVar = "userId") String username){
+        HashMap<String, Object> map = new HashMap<>();
+        map.put("departmentId", departmentId);
+        map.put("userId", userId);
+        map.put("departmentName", departmentName);
+        map.put("username", username);
+
+        return map;
+    }
+
+}
+```
+
+
+
+##### Servlet API
+
++ WebRequest
++ ServletRequest
++ MultipartRequest
++ HttpSession
++ javax.servlet.http.PushBulider
++ Principal
++ InputStream
++ Reader
++ HttpMethod
++ Locale
++ TimeZone
++ ZoneId
+
+``` java
+@Override
+public boolean supportsParameter(MethodParameter parameter) {
+    Class<?> paramType = parameter.getParameterType();
+    return (WebRequest.class.isAssignableFrom(paramType) ||
+            ServletRequest.class.isAssignableFrom(paramType) ||
+            MultipartRequest.class.isAssignableFrom(paramType) ||
+            HttpSession.class.isAssignableFrom(paramType) ||
+            (pushBuilder != null && pushBuilder.isAssignableFrom(paramType)) ||
+            (Principal.class.isAssignableFrom(paramType) && !parameter.hasParameterAnnotations()) ||
+            InputStream.class.isAssignableFrom(paramType) ||
+            Reader.class.isAssignableFrom(paramType) ||
+            HttpMethod.class == paramType ||
+            Locale.class == paramType ||
+            TimeZone.class == paramType ||
+            ZoneId.class == paramType);
+}
+```
+
+> 原生Srvlet API參數的解析賦值由 ServletRequestMethodArgumentResolver 這個參數解析器決定
+
+##### 複雜參數
+
++ Map、Model：裡面的數據會被放置到request域中
++ Errors 、BindingResult：參數綁定數據的錯誤封裝
++ RedirectAttribute：重定向攜帶數據
++ ServletResponse：response
++ SessionStatus
++ UriComponentBuilder
++ ServletUriComponentBuilder
 
 ## SpringBoot響應式編程
 
