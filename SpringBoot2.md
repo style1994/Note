@@ -1235,6 +1235,8 @@ class MyConfig(){
 
 #### 普通參數與基本註解
 
+SpringBoot中控制器方法形參的實際參數值，實際上是由不同的參數解析器負責解析，有專門處理特定註解，也有些是專門處理原生API等等。
+
 ##### 註解
 
 + @PathVariable：獲取URL上的佔位符
@@ -1243,23 +1245,32 @@ class MyConfig(){
 + @ModelAttribute
 + @RequestBody
 + @CookieValue
++ @RequestAttribute
 + @SessionAttribute
++ @MatrixVariable
 
-+ @MatrixVariable：獲取矩陣變量
+###### 矩陣註解
+
+要使用矩陣變量需要在SpringBoot中手動開啟，根據RFC3986的規範，**<font color="ff0000">矩陣變量應該綁定在路徑變量</font>**中。若是有多個矩陣變量，應該使用「;」進行分隔，一個矩陣變量有多個值，使用「,」進行分隔，或者命名多個重複的key即可。
+
+例如：下面兩個寫法具有相同的作用
+
+1. `/cars/sell;low=34;brand=byd,audi,yd` 
+2.  `/cars/sell;low=34;brand=byd;brand=audi;brand=yd`。
+
+要取得路徑變量中的矩陣變量訊息，使用@MatrixVariable註解。
+
++ @MatrixVariable：獲取路徑變量中的矩陣變量
 
   + 屬性：
     + value：矩陣變量的key
     + pathVar：指定路徑變量的名稱
 
-  矩陣變量需要在SpringBoot中手動開啟，根據RFC3986的規範，**<font color="ff0000">矩陣變量應該綁定在路徑變量</font>**中。若是有多個矩陣變量，應該使用「;」進行分隔，一個矩陣變量有多個值，使用「,」進行分隔，或者命名多個重複的key即可。
+> **每層**路徑都可以宣告在矩陣變量中，所以才所是綁定在**路徑變量**。與我們常用的queryString不一樣，兩個可以同時使用，比較特別的變數可以定義在矩陣變量中，與查詢字串區分開。
+>
+> 例如：被禁用cookie後，會改由請求參數傳遞 jsessionid，可以改成使用矩陣變量方式傳遞，跟請求參數區分開來。
 
-  例如：`/cars/sell;low=34;brand=byd,audi,yd` 或是 `/cars/sell;low=34;brand=byd;brand=audi;brand=yd`。
-
-  > **每層**路徑都可以宣告在矩陣變量中，所以才所是綁定在**路徑變量**。與我們常用的queryString不一樣，兩個可以同時使用，比較特別的變數可以定義在矩陣變量中，與查詢字串區分開。
-  >
-  > 例如：被禁用cookie後，會改由請求參數傳遞 jsessionid，可以改成使用矩陣變量方式傳遞，跟請求參數區分開來。
-
-##### 開啟矩陣變量
+###### 開啟矩陣變量
 
 SpringBoot默認關閉矩陣變量，如果要使用矩陣變量，需要手動開啟。對於URL路徑的解析是通過 `UrlPathHelper`，通過調整屬性值來開啟矩陣變量
 
@@ -1396,6 +1407,182 @@ public boolean supportsParameter(MethodParameter parameter) {
 + SessionStatus
 + UriComponentBuilder
 + ServletUriComponentBuilder
+
+###### Map 參數值
+
++ MapMethodProcessor
++ 解析後返回 BindingAwareModelMap
+
+###### Model參數值
+
++ ModelMethodProcessor 解析
++ 解析後返回 BindingAwareModelMap
+
+> 控制器方法形參為Map、Model最終會返回相同的BindingAwareModelMap對象
+
+##### 自定義參數類型
+
+SpringMvc支持請求參數的封裝為自定義類型物件，在SpringBoot也是同樣的使用方式。
+
+###### 解析
+
++ ServletModelAttributeMethodProcessor解析
+  + 決定基礎物件
+  + Web綁定器將請求參數綁定至對象屬性
+    + 轉換器做類型轉換與數據格式化
+  + Web綁定對物件做數據驗證
+  + 驗證結果封裝至 BindingResult
++ 解析後返回自定義類型物件
+
+###### 自定義類型轉換器
+
+實現Converter接口，在`WebMvcConfigurer`組件中，重寫`addFormatters`方法，註冊自己的轉換器
+
+``` java
+
+@Configuration
+public class WebConfig implements WebMvcConfigurer {
+    @Override
+    public void addFormatters(FormatterRegistry registry) {
+        
+        // 實現轉換器
+        Converter petConverter = new Converter<String, Pet>(){
+            @Override
+            public Pet convert(String source) {
+                if(StringUtils.hasText(source)){
+                    String[] petInfos = source.split(",");
+                    if(petInfos.length == 2){
+                        Pet pet = new Pet();
+                        pet.setName(petInfos[0]);
+                        pet.setWeight(Double.parseDouble(petInfos[1]));
+
+                        return pet;
+                    }
+                }
+                return null;
+            }
+        };
+        
+        // 註冊類型轉換器
+        registry.addConverter(petConverter);
+    }
+}
+
+```
+
+```java
+@RestController
+public class PetController {
+
+    @GetMapping("/pet01")
+    public Pet converterTest(@RequestParam("petInfo") Pet pet){
+        return pet;
+    }
+}
+```
+
+#### 數據響應
+
+##### 響應頁面
+
+##### 響應數據
+
+SpringBoot在處理方法返回值時，是通過各種 `HandlerMethodReturnValueHandler`(返回值處理器)來處理返回值。
+
+###### 內容協商原理
+
+請求頭中(Accept)會標註瀏覽器可以接收的內容類型(MediaType)，而服務器本身可以響應不同類型的數據，**瀏覽器與服務器在溝通彼此都可以接收數據類型的過程，稱之為「內容協商」。**
+
+> HttpMessageConverter 轉換是可以雙向了，取決於內部的設定，接口內部定義了canRead和canWrite方法
+
+1. 判斷請求頭中是否有已經確定的媒體類型(MeidaType)。(需要攔截器)
+2. 獲取客戶端支持接收的媒體類型。。
+   1. 由內容協商管理器(`ContentNegotiationManager`)，它默認策略(`HeaderContentNegotiationStrategy`)是解析請求頭的Accept訊息
+   2. 內容協商策略可以通過 `WebMvcConfigurer` 的`configureContentNegotiation`方法增加。
+3. 遍歷所有`HttpMessageConverter`(消息轉換器)，將支持控制器方法返回值的消息轉換器可以產出的媒體類型記錄下來，統計服務器可提供的媒體類型。
+4. 客戶端可以接受的媒體類型與服務器可以提供的媒體類型，取其「交集」，決定最終要使用的媒體類型。
+5. 根據客戶端所提供的媒體類型權重排序，權重較高者優先級越高
+6. 遍歷所有`HttpMessageConverter`(消息轉換器)，看哪個支持控制器方法返回值類型又支持最終媒體類型，決定要最終要使用的消息轉換器。
+7. 使用消息轉換器處理方法返回器。 
+
+先前在數據綁定器中，介紹到類型轉換器，主要用於將請求數據轉換為方法的形參。而在這邊介紹到的`HttpMessageConverter`(消息轉換器)，是將方法返回值，轉為瀏覽器能接收的數據類型。
+
+###### 開啟瀏覽器參數方式內容協商功能
+
+在不使用 ajax 情況下，無法在瀏覽器設定自己想要的請求頭，SpringBoot支持以參數方式傳遞內容協商功能。**<font color="ff0000">參數方式只支持兩種媒禮類型，`xml`、`json`。</font>**
+
+``` yaml
+spring:
+  mvc:
+    contentnegotiation:
+      favor-parameter: true
+```
+
+```java
+/**
+ * Whether a request parameter ("format" by default) should be used to determine
+ * the requested media type.
+ */
+ private boolean favorParameter = false;
+```
+
+開啟後可以傳遞 `format` 參數，傳遞可接受的媒體類型，當然也可以修改該參數名稱，在配置文件設定以下配置：
+
+``` java
+/**
+ * Query parameter name to use when "favor-parameter" is enabled.
+ */
+private String parameterName;
+```
+
+``` yaml
+spring:
+  mvc:
+    contentnegotiation:
+      # 開啟請求參數傳遞媒體類型功能
+      favor-parameter: true
+      # 設定內容協商請求參數默認的名稱
+      parameter-name: mediaType
+```
+
+> 當開啟這功能後，其實就是在內容協商管理器中增加了一個從「請求參數」讀取媒體類型的內容協商策略，且優先級比默認策略高
+
+###### 自定義MessageConverter
+
+當客戶端需要使用到客戶端自定義的媒體類型(MediaType)時，就需要自定義MessageConverter處理。想要自定義MessageConverter處理自訂媒體類型，需要以下步驟：
+
++ 編寫實現HttpMessageConverter接口實現類
+
++ 實現類註冊進底層的MessageConverter數組(通過WebMvcConfigurer)
+
+  ``` java
+  // 配置MessageConverter，會替換掉所有默認MessageConverter
+  // converters 內預設沒任何元素
+  default void configureMessageConverters(List<HttpMessageConverter<?>> converters) {}
+  // 擴展MessageConverter，可以增加修改底層的MessageConver
+  // converters 內有默認的MessageConverter
+  default void extendMessageConverters(List<HttpMessageConverter<?>> converters) {}
+  ```
+
+範例：
+
+
+
+
+
+
+
+###### 響應JSON
+
+想要讓 SpringBoot響應JSON，首先需要兩步驟
+
++ 引入 spring-boot-starter-web 場景(裡面會自動引入 spring-boot-start-json 場景)
++ 使用相關註解，有以下方式
+  + Controller上標註`@RestController`，表示類方法都被@ResponseBody註記。`@RestController` 相當於 @ResponseBody 與 @Controller 組合
+  + Controller方法上使用 `@ResponseBody`標註，表示方法返回值為ResponseBody
+  + 方法返回值宣告為 ResponseEntity，代表響應，可以設定響應頭、響應體、響應狀態碼。
+
+`MappingJackson2HttpMessageConverter` 可以處理 JSON 的 MimeType
 
 ## SpringBoot響應式編程
 
