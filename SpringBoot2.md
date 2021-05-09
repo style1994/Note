@@ -1566,7 +1566,14 @@ spring:
 
 範例：
 
+###### 響應數據總結
 
+當控制器方法返回的是數據而不是視圖名稱時，會使用 `@ResponseBody` 註解。
+
+1. `@ResponseBody`註解標註的控制器方法，會調用<font color="ff0000">`ReuqestResponseBodyMethodProcessor`</font>來處理方法的返回值。
+2. 返回值處理器，內部會調用 MessageConverter 來處理，不同的 MessageConverter 分別處理不同媒體類型的數據，也代表著這個web應用可以響應與處理的媒體數據。
+3.  返回值處理器會根據客戶端可以接受的媒體類型與當前web應用可以提供的媒體類型進行比對(內容協商流程)
+4. 最終決定出「合適」的 MessageConverter 對方法返回值進行處理。
 
 
 
