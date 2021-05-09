@@ -1499,9 +1499,8 @@ SpringBoot在處理方法返回值時，是通過各種 `HandlerMethodReturnValu
 2. 獲取客戶端支持接收的媒體類型。。
    1. 由內容協商管理器(`ContentNegotiationManager`)，它默認策略(`HeaderContentNegotiationStrategy`)是解析請求頭的Accept訊息
    2. 內容協商策略可以通過 `WebMvcConfigurer` 的`configureContentNegotiation`方法增加。
-3. 遍歷所有`HttpMessageConverter`(消息轉換器)，將支持控制器方法返回值的消息轉換器可以產出的媒體類型記錄下來，統計服務器可提供的媒體類型。
-4. 客戶端可以接受的媒體類型與服務器可以提供的媒體類型，取其「交集」，決定最終要使用的媒體類型。
-5. 根據客戶端所提供的媒體類型權重排序，權重較高者優先級越高
+3. 遍歷所有`HttpMessageConverter`(消息轉換器)，將支持所有消息轉換器可以產出的媒體類型記錄下來，統計服務器可提供的媒體類型。
+4. 客戶端可以接受的媒體類型與服務器可以提供的媒體類型，取其「交集」，決定最終要使用的媒體類型。(根據客戶端所提供的媒體類型權重排序，權重較高者優先級越高)
 6. 遍歷所有`HttpMessageConverter`(消息轉換器)，看哪個支持控制器方法返回值類型又支持最終媒體類型，決定要最終要使用的消息轉換器。
 7. 使用消息轉換器處理方法返回器。 
 
@@ -1509,7 +1508,9 @@ SpringBoot在處理方法返回值時，是通過各種 `HandlerMethodReturnValu
 
 ###### 開啟瀏覽器參數方式內容協商功能
 
-在不使用 ajax 情況下，無法在瀏覽器設定自己想要的請求頭，SpringBoot支持以參數方式傳遞內容協商功能。**<font color="ff0000">參數方式只支持兩種媒禮類型，`xml`、`json`。</font>**
+在不使用 ajax 情況下，無法在瀏覽器設定自己想要的請求頭，SpringBoot支持以參數方式傳遞內容協商功能。**<font color="ff0000">默認只支持兩種媒禮類型，`xml`、`json`。</font>**
+
+內部原理就是SpringBoot除了請求頭內容協商策略以外，在另外配置了`ParameterContentNegotiationStrategy` 這個內容協商策略，可以從請求參數值獲取媒體訊息(默認key是format)
 
 ``` yaml
 spring:
@@ -1551,7 +1552,13 @@ spring:
 
 當客戶端需要使用到客戶端自定義的媒體類型(MediaType)時，就需要自定義MessageConverter處理。想要自定義MessageConverter處理自訂媒體類型，需要以下步驟：
 
-+ 編寫實現HttpMessageConverter接口實現類
++ 編寫實現`HttpMessageConverter`接口實現類，該接口定義以下方法：
+
+  + boolean canRead：是否支持讀取操作(@RequestBody標註的控制器方法參數)
+  + boolean canWrite：是否支持寫出操作(控制方法返回值)
+  + List\<MediaType\> getSupportedMediaTypes：<font color="ff0000">轉換器所支持的媒體訊息</font>
+  + \<T\> read：讀取邏輯
+  + void write：寫出邏輯
 
 + 實現類註冊進底層的MessageConverter數組(通過WebMvcConfigurer)
 
@@ -1564,7 +1571,73 @@ spring:
   default void extendMessageConverters(List<HttpMessageConverter<?>> converters) {}
   ```
 
+> MessageConverter 除了支持將控制器方法返回值進行轉換以外，也可以對請求體做轉換，只要方法的參數標註@RequestBody 那麼就會去找尋適合的 MessageCoverter 做轉換
+
 範例：
+
+``` java
+@RestController
+public class PetController {
+
+    @GetMapping("/pet")
+    public Pet getPet(){
+        Pet pet = new Pet("Godzilla", 29d);
+
+        return pet;
+    }
+}
+```
+
+``` java
+@Configuration
+public class WebConfig implements WebMvcConfigurer {
+    @Override
+    public void extendMessageConverters(List<HttpMessageConverter<?>> converters) {
+        converters.add(new PetMessageConverter());
+    }
+}
+```
+
+
+
+###### 字定義內容協商策略
+
+SpringBoot在幫我們配置參數傳遞媒體類型內容協商策略時，默認只有JSON、XML兩種格式，如果自定義類型的媒體類型，使用SpringBoot配置的就不合適。所以也可以通過配置替換掉SpringBoot默認配置的幾種策略，SpringBoot默認策略如下：
+
++ HeaderContentNegotiationStrategy：讀取Accept請求頭
++ ParameterContentNegotiationStrategy：當有配置請求參數內容策略時
+
+`WebMvcConfigurer` 的 `configureContentNegotiation()`方法，就是用來配置內容協商，可以在這裡添加內容策略，<font color="ff0000">需要注意的是，添加自己策略後會把SpringBoot的默認策略取消，如果還需使用到SpringBoot的默認策略，請手動添加上。</font>
+
+自訂內容協商策略，有以下步驟：
+
++ 實現`ContentNegotiationStrategy` 接口，就可以自訂義自己的內容協商策略
++ 通過 WebMvcConfigurer 接口實現配置類，把自定義的策略註冊進內容協商管理器
+
+範例：將參數的策略添加一個自定義的媒體類型`application/x-pet`
+
+``` java
+public class WebConfig implements WebMvcConfigurer {
+
+    @Override
+    public void configureContentNegotiation(ContentNegotiationConfigurer configurer) {
+        HashMap<String, MediaType> supportMediaTypes = new HashMap<>();
+        supportMediaTypes.put("json", MediaType.APPLICATION_JSON);
+        supportMediaTypes.put("xml", MediaType.APPLICATION_XML);
+        // 自定義媒體類型的支持
+        supportMediaTypes.put("pet", MediaType.parseMediaType("application/x-pet"));
+        // 參數策略
+        ParameterContentNegotiationStrategy parameterStrategy = new ParameterContentNegotiationStrategy(supportMediaTypes);
+        // 請求頭策略
+        HeaderContentNegotiationStrategy headerStrategy = new HeaderContentNegotiationStrategy();
+
+        // 註冊自己的策略(會蓋掉SpringBoot默認)
+        configurer.strategies(Arrays.asList(parameterStrategy, headerStrategy));
+    }
+}
+```
+
+
 
 ###### 響應數據總結
 
@@ -1574,10 +1647,6 @@ spring:
 2. 返回值處理器，內部會調用 MessageConverter 來處理，不同的 MessageConverter 分別處理不同媒體類型的數據，也代表著這個web應用可以響應與處理的媒體數據。
 3.  返回值處理器會根據客戶端可以接受的媒體類型與當前web應用可以提供的媒體類型進行比對(內容協商流程)
 4. 最終決定出「合適」的 MessageConverter 對方法返回值進行處理。
-
-
-
-
 
 ###### 響應JSON
 
