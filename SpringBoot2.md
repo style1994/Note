@@ -1660,5 +1660,234 @@ public class WebConfig implements WebMvcConfigurer {
 
 `MappingJackson2HttpMessageConverter` 可以處理 JSON 的 MimeType
 
+### 視圖解析與模板引擎
+
+#### 視圖解析
+
+處理完請求進行跳轉到頁面的過程，被稱為視圖解析。SpringBoot 默認不支持 JSP，需要引入第三方模板引擎技術實現頁面渲染。原因是SpringBoot默認打包成jar包，屬於壓縮包的一種，而JSP不支持在壓縮包內編譯。
+
+SpringBoot支持以下第三方模板引擎，freemarker、groovy-templates、thymeleaf
+
+#### 視圖解析原理
+
++ 控制器方法返回值為視圖名稱時，會使用`ViewNameMethodReturnValueHandler`返回值處理器來處理
++ 目標方法處理過程中，所有數據都會放在 ModelAndViewContainer 裡面，包括數據和視圖地址。
++ 如果方法的參數是一個自定義類型對象(從請求參數中確定)，它也會重新放在 ModelAndViewContainer
++ 任何目標方法執行完後都會返回ModelAndView
++ processDispatchResult 方法處理派發結果(頁面如何響應)
+  + rander() 進行頁面渲染
+    + 根據方法返回值得到View對象。View對象定義頁面渲染邏輯
+      + 便利所有視圖解析器，解析方法返回值得到視圖對象，直到有一個成功解析為止，如果全部失敗，拋出異常
+
+#### 模板引擎 - Thymeleaf
+
+##### Thymeleaf 簡介
+
+現代化、服務端 Java 模板語言
+
+##### 基本語法
+
+###### 表達式
+
+| 表達式     | 語法 | 用途                           |
+| ---------- | ---- | ------------------------------ |
+| 變量取值   | ${…} | 獲取請求域、session域、對象等  |
+| 選擇變量   | *{…} | 獲取上下文對象值               |
+| 消息       | #{…} | 獲取國際化等值                 |
+| 鏈結       | @{…} | 生成鏈結                       |
+| 片段表達式 | ~{…} | jsp:include 作用，引入公共頁面 |
+
+###### 字面量
+
++ 文本值：'one'、'two'、'three' … (單引號)
++ 數字：0、1、2.0、3.4
++ 布爾值：true、false
++ 空值：null
++ 變量：a1、a2、a3、…(變量不可以有空格)
+
+###### 文本操作
+
++ 字串符拼接：+
++ 變量替換：|The name is ${name}|
+
+###### 數學運算
+
+運算符：「+」、「-」、「*」、「/」、「%」
+
+###### 布爾運算
+
++ 二元運算符：and、or
++ 一元運算符：!、not
+
+###### 比較運算符
+
++ 比較：>(gt)、<(lt)、>=(ge)、<=(le)
++ 等式：==(eq)、!=(ne)
+
+###### 條件運算符
+
++ if-then：(if) ? (then)
++ if-then-else：(if) ? (then) : (else)
++ Default：(value) ?: (defaultvalue)
+
+###### 特殊操作符
+
+無操作：_
+
+##### 設置屬性值 th:attr
+
++ 設置單個值
+
+  ``` html
+  <form action="subscribe" th:attr="action=@{/subscribe}">
+      <input type="text" name="email">
+      <input type="text" value="Subscribe!!!" th:attr="value=#{subscribute.submit}">
+  </form>
+  ```
+
++ 設置多個屬性值(逗號分隔)
+
+  ``` html
+  <img th:attr="src=@{/images/logo.png},title="#{logo}">
+  ```
+
++ 替代寫法(th:xxx)
+
+  ``` html
+  <form action="subcribe" th:action="@{/subcribe}"> // 會自動拼接上項目路徑
+      <input type="text" value="Subscribe!!!" th:value="#{subcribute.submit}"/>
+  </form>
+  ```
+
+##### 迭代 th:each
+
+``` html
+<tr th:each="prod : ${prods}">
+    <td th:text="${prod.name}">defaultName</td>
+    <td th:text="${prod.value}">defaultValue</td>
+    <td th:text="${prod.inStack}? #{true} : #{false}">yes</td>
+</tr>
+```
+
+```` html
+<tr th:each="prod,iterStat : ${prods}" th:class="${iterStat.odd? 'odd'}">
+    <td th:text="${prod.name}">defaultName</td>
+    <td th:text="${prod.value}">defaultValue</td>
+    <td th:text="${prod.inStack}? #{true} : #{false}">yes</td>
+</tr>
+````
+
+##### 條件運算
+
+``` html
+<a th:href="@{/product/commons/${prod.id}" th:if="${not lists.isEmpty}">view</a>
+```
+
+```` html
+<div th:switch="${user.role}">
+    <p th:case="'admin'">
+        User is an administrator
+    </p>
+    <p th:case="{roles.manager}">
+        User is a manager
+    </p>
+    <p th:case="*">
+        User is some orther role
+    </p>
+</div>
+````
+
+##### 行內語法
+
+如果要顯示的文字為標籤文本內容，那麼可以使用`th:text`替換掉標籤文本內容，但是如果我們並不想替換掉全部的文本內容，又或者是文字並不在標籤中，那可以使用行內寫法。
+
+想要在標籤頭以外使用thymeleaf表達式，表達式加上前綴「[[ 或 [(」和後綴「]] 或 )]」。
+
+``` html
+<h1>
+    Hello, [[${user.name}]]
+</h1>
+```
+
+
+
+##### Thymeleaf使用
+
+1. 引入spring-boot-start-thymeleaf 依賴
+
+2. SpringBoot自動配置(`ThymeleafAutoConfiguration`)
+
+   1. 所有的Thmyeleaf的配置值都在 `ThymeleafProperties`
+   2. 模板解析器 `SpringSourceTemplateResolver`
+   3. 模板引擎 `SpringTemplateEngine`
+   4. 視圖解析器 `ThymeleafViewResolver`
+
+3. 開發頁面
+
+   1. 視圖名默認前墜：`classpath:/templates/` 且 默認後墜：`.html`，所以默認要放到類路徑下的templates資料夾且副檔名為.html。
+
+   2. 頁面引入thymeleaf名稱空間
+
+      ``` html
+      <html xmlns:th="http://www.thymeleaf.org">    
+      </html>
+      ```
+
+### 攔截器
+
+web應用通常有登入功能，只有登入後才能訪問網站的功能，所以勢必要在每個功能前面都加上是否登入的驗證，而這個工作就可以通過攔截器來處理。
+
+通過實現 `HandlerInterceptor` 接口，自定義攔截器，該接口有以下方法：
+
++ preHandler：在目標方法執行前處理
++ postHandler：在目標方法執行完後，頁面渲染前處理
++ afterComplete：在視圖渲染完成後處理
+
+使用攔截器步驟：
+
+1. 編寫自定義攔截器
+2. 定義攔截器攔截那些請求
+3. 把攔截器放入容器中
+   1. 通過`WebMvcAutoConfigurer`接口的 `addInterceptosrs`方法，配置攔截器。
+
+範例：
+
+``` java
+@Slf4j
+public class LoginInterceptor implements HandlerInterceptor {
+
+    @Override
+    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
+        log.info("preHandle");
+        Object currentUser = request.getSession().getAttribute("currentUser");
+        if(currentUser != null){
+            return true;
+        }
+        return false;
+    }
+
+    @Override
+    public void postHandle(HttpServletRequest request, HttpServletResponse response, Object handler, ModelAndView modelAndView) throws Exception {
+        log.info("postHandle");
+    }
+
+    @Override
+    public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) throws Exception {
+        log.info("afterCompletion");
+    }
+}
+```
+
+``` java
+@Override
+public void addInterceptors(InterceptorRegistry registry) {
+    registry.addInterceptor(new LoginInterceptor())
+        .addPathPatterns("/**") //攔截所有請求
+        .excludePathPatterns("/static/**","/login","/"); //排除對靜態文件的請求、登入請求
+}
+```
+
+
+
 ## SpringBoot響應式編程
 
