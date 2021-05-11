@@ -1843,6 +1843,8 @@ web應用通常有登入功能，只有登入後才能訪問網站的功能，�
 + postHandler：在目標方法執行完後，頁面渲染前處理
 + afterComplete：在視圖渲染完成後處理
 
+> 執行過preHandler方法且返回true的攔截器，不論後續是否有異常，它的afterComplete必定會執行。
+
 使用攔截器步驟：
 
 1. 編寫自定義攔截器
@@ -1887,7 +1889,143 @@ public void addInterceptors(InterceptorRegistry registry) {
 }
 ```
 
+#### 攔截器原理
 
++ 根據當前請求，找到可以處理請求的handler(controller)和所有符合的攔截器，它們被封裝為`HandlerExecutionChain`對象。
++ 目標方法執行之前，「**<font color="ff0000">順序</font>**」執行所有攔截器的 `preHandle` 方法
+  + 返回 `true`，則執行下一個攔截器的 `preHandle`
+  + 返回 `false`，「**<font color="ff0000">倒序</font>**」執行之前「`preHandle`返回`true`」攔截器的 `afterComplete` 方法
++ 如果任何一個攔截器`preHandle`返回 `false`，直接跳出不執行目標方法
++ 如果所有攔截器的`preHandle`都返回`true`執行目標方法
++ 目標方法執行完，「**<font color="ff0000">倒序</font>**」執行全部攔截器的 `postHandle`
++ 頁面渲染完成，「**<font color="ff0000">倒序</font>**」執行全部攔截器的 `afterCompletion`
+
+> 前面的步驟有任何異常都會直「**<font color="ff0000">倒序</font>**」執行之前「`preHandle`返回`true`」攔截器的 `afterCompletion` 方法
+
+### 文件上傳
+
++ 表單文件上傳
+  + method 設置為 post
+  + enctype 設置為 multipart/form-data
+  + input 標籤指定 type=file，為上傳表單元件
+    + input標籤可以設置 multipart 屬性(沒有值)，指定上傳表單元件為多檔案上傳
+
+Spring在處理文件上傳時，可以通過控制器方法上 `MultipartFIle` 類型形參，表示上傳的檔案，一個檔案對應一個，所以是多文件上傳時，可以指定為`MultipartFIle`數組。
+
+`MultipartFIle`接口定義以下方法：
+
++ getName()：獲得表單的name值(請求參數的key)
++ getOriginFilename()：獲得客戶端上檔案的文件名稱
++ getContentType()：獲得檔案的類型
++ isEmpty()：檔案是否為空(表單上傳元件沒選檔案或選擇的檔案為空)
++ getSize()：獲得檔案的大小(byte)
++ getBytes()：獲得檔案的內容
++ getInputStream()：獲得檔案的輸入流
++ transferTo：將檔案儲存到指定目錄
+
+如果 `MultipartFIle` 類型的形參名稱與表單上傳元件的 name 不一致時，可以通過 `@RequestPart` 註解指定表單文件的 name，進行數據綁定動作。
+
+`MultipartAutoConfiguration`自動配置了文件上傳的設定，`MultipartProperties`內定義可以調整的設定。例如：要修改默認的檔案大小設置，可以進行以下設定
+
+```yaml
+spring:
+  servlet:
+    multipart:
+      # 設置單檔案大小限制
+      max-file-size: 10MB
+      # 設置請求總檔案大小限制
+      max-request-size: 100MB
+```
+
+範例：
+
+``` html
+<form action="upload" method="post" enctype="multipart/form-data">
+    頭像：<input type="file" name="headImg"><br>
+    <!-- 多檔案上傳 -->
+    生活照：<input type="file" name="liveImg" multiple><br>
+    <input type="submit">
+</form>
+```
+
+``` java
+@PostMapping("/upload")
+public String upload(@RequestPart("headImg") MultipartFile userImage, List<MultipartFile> liveImg) throws IOException {
+
+    log.info("userImg formName={}, fileName={}, fileSize={}",
+             userImage.getName(), userImage.getOriginalFilename(), userImage.getSize());
+
+    // 保存前確認檔案是否為空
+    if(!userImage.isEmpty()){
+        userImage.transferTo(new File("C:\\upload\\" + userImage.getOriginalFilename()));
+    }
+
+    // 多檔案上傳
+    if(!liveImg.isEmpty()){
+        for(MultipartFile file : liveImg){
+            log.info("userImg formName={}, fileName={}, fileSize={}",
+                     file.getName(), file.getOriginalFilename(), file.getSize());
+
+            // 保存前確認檔案是否為空
+            if(!file.isEmpty()){
+                file.transferTo(new File("C:\\upload\\" + file.getOriginalFilename()));
+            }
+        }
+    }
+
+    return "success";
+}
+```
+
+### 異常處理
+
+#### 錯誤處理
+
+##### SpringBoot默認規則：
+
++ 默認情況下，SpringBoot提供 `/error` 處理所有錯誤映射
++ 對於機器客戶端，它會生成JSON響應，其中包含錯誤，HTTP狀態和異常消息的詳細訊息。對於瀏覽器，響應一個「whitelabel」錯誤視圖，以HTML格式呈現相同數據。
++ **要對whitelabel進行自定義，添加 `View` 解析為 `error`**
++ 要完全替換默認行為，可以實現 `ErrorController` 並註冊該類型的 Bean 定義，或添加 `ErrorAttributes` 類型組件以使用現有機制替換其內容
+
+##### SpringBoot提供的錯誤處理機制：
+
++ 自定義錯誤頁面，根據響應狀態碼跳轉到對應錯誤頁。
+  + 錯誤頁面需要放到靜態/動態資源目錄下的`error`資料夾。例如：error/404.html、error/5xx.html(以5開頭的響應狀態碼都使用該頁)
++ `@ControllerAdvice` + `@ExceptionHandler` 註解定義集中異常處理方法
++ 實現 HandlerExceptionResolver 處理異常
+
+##### 異常處理底層組件功能分析
+
+SpringBoot 錯誤自動配置類為 ：`ErrorMvcAutoConfiguration`。裡面自動配置了以下組件：
+
++ `DefaultErrorAttribute` 組件 (`id=errorAttributes`)
+
+  定義錯誤響應中包含哪些內容
+
++ `BasicErrorController` 組件 (`id=basicErrorController`)
+
+  + SpringBoot默認處理 /error 路徑的請求的控制器類
+
+    ``` java
+    @Controller
+    // 1. server.error.path 配置訊息
+    // 2. error.path 配置訊息
+    // 3. /error 都沒配置的映射
+    // 優先度由上而下
+    @RequestMapping("${server.error.path:${error.path:/error}}")
+    public class BasicErrorController extends AbstractErrorController {}
+    ```
+
+  + 客戶端為瀏覽器時響應白頁，其他都響應JSON
+
++ `View` 組件(`id=error`)，默認響應錯誤頁
+
++ `BeanNameViewResolver` 組件，依視圖名作為組件的id去容器找view對象。為了找上一項配置的 `View`。
+
++ `DefaultErrorViewResolver` 組件 (`id=conventionErrorViewResolver`)
+
+  如果發生錯誤，會以HTTP的狀態碼作為視圖地址(viewName)，找到真正的頁面。例如：error/4xx.html、error/5xx.html
 
 ## SpringBoot響應式編程
 
