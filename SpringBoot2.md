@@ -262,8 +262,10 @@ server.port=8888
 
 + 可以修改版本號
 
-  `spring-boot-dependencies` 使用許多變數定義依賴所使用的版本訊息，如果不想使用默認的依賴版本，可以在自己SpringBoot項目中定義相同名稱的變數，指定需要的版本號。
+  方式一：maven的屬性就近原則
 
+  `spring-boot-dependencies` 使用許多變數定義依賴所使用的版本訊息，如果不想使用默認的依賴版本，可以在自己SpringBoot項目中定義相同名稱的變數，指定需要的版本號。
+  
   ```xml
   操作步驟：
   1. 查看spring-boot-dependencies裡面定義依賴版本使用的 key
@@ -273,6 +275,20 @@ server.port=8888
       <mysql.version>5.1.43</mysql.version>
   </properties>
   ```
+  
+  方式二：maven的依賴就近原則
+  
+  直接在依賴指定具體的版本
+  
+  ``` xml
+  <dependency>
+      <groupId>mysql</groupId>
+      <artifactId>mysql-connector-java</artifactId>
+      <version>8.0.23</version>
+  </dependency>
+  ```
+  
+  
 
 ##### 自動配置
 
@@ -811,13 +827,11 @@ lombok註解：
 
 快速幫你創建一個SpringBoot初始化項目，建立目錄結構、引入場景依賴、建立主程序等等。強烈建議使用
 
-### 核心功能
-
-#### yaml配置文件
+### YAML配置文件
 
 SpringBoot可以在全局編寫 `application.properties` 外，還兼容YAML格式的配置文件。
 
-##### yaml簡介
+#### yaml簡介
 
 YAML 是「YAML Ain't Markup Language」(YAML不是一種標記語言)的遞歸縮寫。在開發這種語言時，YAML 的意思其實是：「Yet Another Markup Language」(仍是一種標記語言)
 
@@ -829,7 +843,7 @@ YAML 是「YAML Ain't Markup Language」(YAML不是一種標記語言)的遞歸�
 + properties 的優先級高於 yaml
 + ymal配置文件的副檔名可以是「.yaml」或「.yml」
 
-##### 基本語法
+#### 基本語法
 
 + key: value **<font color="ff0000">kv之間有1空格</font>**
 + 大小敏感
@@ -839,7 +853,7 @@ YAML 是「YAML Ain't Markup Language」(YAML不是一種標記語言)的遞歸�
 + #表示注釋
 + 字符串無須加引號，如果使用「''」與「""」表示字串內容，轉義符號(\\)會不解析或解析
 
-##### 數據類型
+#### 數據類型
 
 + 字面量：單個的、不可在分的值。date、boolean、number、string
 
@@ -871,7 +885,7 @@ YAML 是「YAML Ain't Markup Language」(YAML不是一種標記語言)的遞歸�
    - v3
   ```
 
-##### 範例
+#### 範例
 
 將下列 JavaBean，與 yaml 配置文件進行綁定
 
@@ -920,7 +934,7 @@ user:
       - {name: buck, weight: 18}
 ```
 
-##### 顯示提示
+#### 顯示提示
 
 在編寫`application.yaml`，SpringBoot相關的設定都有提示，自定義的類也可以讓其顯示提示，只需要以下設定：(官方文檔[Configuration Metadata](https://docs.spring.io/spring-boot/docs/current/reference/html/appendix-configuration-metadata.html#configuration-metadata)的Configuring the Annotation Processor小節)
 
@@ -1660,15 +1674,15 @@ public class WebConfig implements WebMvcConfigurer {
 
 `MappingJackson2HttpMessageConverter` 可以處理 JSON 的 MimeType
 
-### 視圖解析與模板引擎
-
 #### 視圖解析
+
+##### 視圖解析
 
 處理完請求進行跳轉到頁面的過程，被稱為視圖解析。SpringBoot 默認不支持 JSP，需要引入第三方模板引擎技術實現頁面渲染。原因是SpringBoot默認打包成jar包，屬於壓縮包的一種，而JSP不支持在壓縮包內編譯。
 
 SpringBoot支持以下第三方模板引擎，freemarker、groovy-templates、thymeleaf
 
-#### 視圖解析原理
+##### 視圖解析原理
 
 + 控制器方法返回值為視圖名稱時，會使用`ViewNameMethodReturnValueHandler`返回值處理器來處理
 + 目標方法處理過程中，所有數據都會放在 ModelAndViewContainer 裡面，包括數據和視圖地址。
@@ -1677,7 +1691,7 @@ SpringBoot支持以下第三方模板引擎，freemarker、groovy-templates、th
 + processDispatchResult 方法處理派發結果(頁面如何響應)
   + rander() 進行頁面渲染
     + 根據方法返回值得到View對象。View對象定義頁面渲染邏輯
-      + 便利所有視圖解析器，解析方法返回值得到視圖對象，直到有一個成功解析為止，如果全部失敗，拋出異常
+      + **遍歷所有視圖解析器，解析視圖名稱得到視圖對象，直到有一個成功解析為止，如果全部失敗，拋出異常**
 
 #### 模板引擎 - Thymeleaf
 
@@ -1833,7 +1847,7 @@ SpringBoot支持以下第三方模板引擎，freemarker、groovy-templates、th
       </html>
       ```
 
-### 攔截器
+#### 攔截器
 
 web應用通常有登入功能，只有登入後才能訪問網站的功能，所以勢必要在每個功能前面都加上是否登入的驗證，而這個工作就可以通過攔截器來處理。
 
@@ -1889,7 +1903,7 @@ public void addInterceptors(InterceptorRegistry registry) {
 }
 ```
 
-#### 攔截器原理
+##### 攔截器原理
 
 + 根據當前請求，找到可以處理請求的handler(controller)和所有符合的攔截器，它們被封裝為`HandlerExecutionChain`對象。
 + 目標方法執行之前，「**<font color="ff0000">順序</font>**」執行所有攔截器的 `preHandle` 方法
@@ -1902,7 +1916,7 @@ public void addInterceptors(InterceptorRegistry registry) {
 
 > 前面的步驟有任何異常都會直「**<font color="ff0000">倒序</font>**」執行之前「`preHandle`返回`true`」攔截器的 `afterCompletion` 方法
 
-### 文件上傳
+#### 文件上傳
 
 + 表單文件上傳
   + method 設置為 post
@@ -1977,25 +1991,26 @@ public String upload(@RequestPart("headImg") MultipartFile userImage, List<Multi
 }
 ```
 
-### 異常處理
+#### 異常處理
 
-#### 錯誤處理
+##### 錯誤處理
 
-##### SpringBoot默認規則：
+###### SpringBoot默認規則：
 
 + 默認情況下，SpringBoot提供 `/error` 處理所有錯誤映射
 + 對於機器客戶端，它會生成JSON響應，其中包含錯誤，HTTP狀態和異常消息的詳細訊息。對於瀏覽器，響應一個「whitelabel」錯誤視圖，以HTML格式呈現相同數據。
-+ **要對whitelabel進行自定義，添加 `View` 解析為 `error`**
++ **要對whitelabel進行自定義，註冊`View` bean id為 `error`**
 + 要完全替換默認行為，可以實現 `ErrorController` 並註冊該類型的 Bean 定義，或添加 `ErrorAttributes` 類型組件以使用現有機制替換其內容
 
-##### SpringBoot提供的錯誤處理機制：
+###### SpringBoot提供的錯誤處理機制：
 
 + 自定義錯誤頁面，根據響應狀態碼跳轉到對應錯誤頁。
   + 錯誤頁面需要放到靜態/動態資源目錄下的`error`資料夾。例如：error/404.html、error/5xx.html(以5開頭的響應狀態碼都使用該頁)
-+ `@ControllerAdvice` + `@ExceptionHandler` 註解定義集中異常處理方法
-+ 實現 HandlerExceptionResolver 處理異常
++ `@ControllerAdvice` + `@ExceptionHandler` 註解定義**全局**異常處理方法
++ 在各自的 Controller + `@ExceptionHandler` 註解定義**區域**異常處理方法
++ 實現 `HandlerExceptionResolver` 接口處理異常。**可通過 @Order 註解調整異常解析器的優先級**。
 
-##### 異常處理底層組件功能分析
+###### 異常處理底層組件功能分析
 
 SpringBoot 錯誤自動配置類為 ：`ErrorMvcAutoConfiguration`。裡面自動配置了以下組件：
 
@@ -2026,6 +2041,194 @@ SpringBoot 錯誤自動配置類為 ：`ErrorMvcAutoConfiguration`。裡面自�
 + `DefaultErrorViewResolver` 組件 (`id=conventionErrorViewResolver`)
 
   如果發生錯誤，會以HTTP的狀態碼作為視圖地址(viewName)，找到真正的頁面。例如：error/4xx.html、error/5xx.html
+
+###### 異常處理步驟流程
+
+1. 執行目標方法，方法執行期間有任何異常，都會被 catch 保存到 dispatchEcxeption區域變數，且會將當前請求標註為「已完成」，將在頁面渲染流程使用。
+
+2. 頁面渲染流程
+
+   `processDispatchResult(processedRequest, response, mappedHandler, mv, dispatchException);`
+
+   1. **處理handler異常，返回ModelAndView**
+
+      `mv = processHandlerException(request, response, handler, exception);`
+
+      1. 遍歷所有的handler異常解析器(`HandlerExceptionResolver`)解析異常，看誰能處理當前異常並返回ModelAndView，以下為默認的異常解析器：
+
+         1. DefaultErrorAttributes(**<font color="ff0000">「必定執行」，順位第一，且返回null值，執行完會交由後續解析器繼續解析</font>**)
+
+            將發生的異常保存到請求域中，key：DefaultErrorAttributes全類名 + .ERROR
+
+         2. HandlerExceptionResolverComposite(三個異常解析器的組合)
+
+            1. ExceptionHandlerExceptionResolver
+
+               **用來處理@ExceptionHandler註解**
+
+            2. ResponseStatusExceptionResolver
+
+               **用來處理@ResponseStatus註解**
+
+            3. DefaultHandlerExceptionResolver
+
+               專門用來處理Spring的異常
+
+      2. 異常解析器**有**解析出ModelAndView，做一些處理，返回試圖後接續視圖解析流程
+
+         1. 判斷視圖與模型是否為空，為空返回null
+         2. 判斷視圖是否為空，為空設定視圖名
+         3. …
+
+      3. 異常解析器**沒有**解析出ModelAndView，代表沒人處理該異常，則拋出當前異常，頁面渲染失敗，**SpringBoot底層再會次發出/error請求，由`BasicErrorController`處理該請求。**
+
+以下說明 BasicErrorController 的錯誤解析流程：
+
++ 如果沒有人可以處理異常，程序中止，SpringBoot底層會轉發(forward)/error請求，交由BasicErrorController 處理
++ 使用解析錯誤視圖解析器，遍歷所有的 `ErrorViewResolver`，解析出錯誤視圖，默認使用 DefaultErrorViewResolver
+  + 嘗試查找是否有對應的「具體」錯誤頁面。例如：error/404.html、error/500.html。
+  + 嘗試查找是否有對應的「模糊」錯誤頁面。例如：error/4xx.html、error/5xx.html。
++ 如果錯誤試圖解析器都沒解析出，則使用視圖名稱為error的視圖(白頁)，在自動配置就加入至ioc容器中，id=error，會使用BeanNameViewResolver判斷出使用該error視圖
++ 接續後續的目標方s法執行完後的流程
+
+#### Web原生組件注入(Servlet、Filter、Listener)
+
+##### 使用 Servlet API
+
+SpringBoot 提供 `@ServletComponentScan` 註解：作用是掃描 `@WebServlet`、`@WebListener`、`@WebFilter` 註解標註的類，可以通過這種方式讓Web原生組件註冊到容器中。
+
+相對於使用第二種方式，第一種方式更便捷一些。
+
+##### 使用 ReqistrationBean
+
+通過 SpringBoot 提供的組件：
+
++ ServletReqistrationBean：註冊Servlet
++ FilterReqistrationBean：註冊Filter
++ ServletListenerReqistrationBean：註冊Listener
+
+通過將這三個組件註冊到ioc容器中，它們都構造器都接收自定義的Servlet、Filter、Listener
+
+##### 註冊的Servlet無法被攔截器攔截
+
+學習SpringMvc時知道，框架是通過前端控制器(DispatcherServlet)，來進行一系列的操作，各種請求參數轉換、視圖解析、錯誤處理、攔截器等等，都是前端控制器的功能。
+
+而我們自己定義註冊到Spring的Servlet，卻是沒有doDispatcher方法中那些神奇的功能，當然沒有辦法使用到框架相關功能。
+
+題外話：DispatcherServlet 是通過 DispatcherServletAutoConfiguration 來進行自動配置，前端控制器是通過ServletRegistration方式註冊到容器被Spring管理。
+
+#### 嵌入式Servlet容器
+
++ 當前項目是一個Web應用，會自動配置一個特殊的web版ioc容器(`ServletWebServerApplicationContext`)
++ `ServletWebServerApplicationContext`對嵌入式server容器進行支持。
++ 容器啟動時，會去找尋 `ServletWebServerFactory`，該功能會創建對應的server容器
++ `ServletWebServerFactory`工廠的實現類，對應著SpringBoot底層默認支持的web容器：
+  + TomcatServletWebServerFactory：Tomcat支持
+  + JettyServletWebServerFactory：Jetty支持
+  + UndertowServletWebServerFactory：Undertow支持
++ 內嵌服務器其實就是導入服務器的依賴，通過代碼的方式來設定服務器並啟動，與先前手動點擊start.bat來啟動並無區別。
+
+##### 切換服務器
+
+ServletWebServerFactoryAutoConfiguration自動配置類，根據導入的server依賴自動配置了Tomcat、Jetty、Undertow。
+
+所以只要切換項目導入的服務器依賴，就可以達到切換的效果。有以下步驟
+
++ `spring-boot-starter-web`內嵌`spring-boot-starter-tomcat`，想要其他服務器時，在導入web場景依賴時須要排除 `spring-boot-starter-tomcat`
+
+  ``` xml
+  <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-web</artifactId>
+      <exclusions>
+          <exclusion>
+              <groupId>org.springframework.boot</groupId>
+              <artifactId>spring-boot-starter-tomcat</artifactId>
+          </exclusion>
+      </exclusions>
+  </dependency>
+  ```
+
+  
+
++ 導入其它服務器場景依賴，例如：`spring-boot-starter-jetty`、`spring-boot-starter-undertow`
+
+  ``` xml
+  <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-jetty</artifactId>
+  </dependency>
+  ```
+
+##### 服務器設定
+
++ 方式一：通過配置文件 (推薦)
+
+  知道web服務器啟動是通過`ServletWebServerFactory`，而該工廠的自動配置類為`ServletWebServerFactoryAutoConfiguration`，自動配置類是讀取`ServerProperties`，所以在配置文件以`server.`開頭自定義web服務器
+
++ 方式二：通過自定義 `ServletWebServerFactory`直接修改創建啟動web容器的邏輯。 推薦使用`ServletWebServerFactory`的子接口`ConfigurableServletWebServerFactory`
+
++ 方式三：自定義 `WebServerFactoryCustomizer`實現類，實現以編程方式配置，默認是使用`ServletWebServerFactoryCustomizer`，內部是通過讀取`ServerProperties`方式配置
+
+#### SpringBoot 訂制化原理
+
+##### 自動配置套路
+
+<font color="ff0000">引入場景依賴</font> -> xxxAutoConfiguration -> 註冊組件 -> 綁定xxxProperties -> <font color="ff0000">綁定配置文件項(application.properties)</font>
+
+中間的配置過程都由SpringBoot進行封裝，通常情況下開發時只需導入相關場景依賴，並根據業務邏輯的需求，通過配置文件修改默認配置。只有少數情況，才會通過自定義組件去替換底層組件。
+
+##### 自訂義的常見方式
+
++ 修改配置文件
++ xxxCustomizer
++ @Configuration + @Bean，替換或添加容器中默認的組件。例如：視圖解析器
++ 容器中配置`WebMvcConfigurer`實現類，訂制化web功能。
++ @EnableWebMvc + WebMvcConfigurer 全面接管SpringMvc，全部規則自訂義
+  + @EnableWebMvc註解會讓 WebMvcAutoConfiguration 自動配置類所有配置失效
+
+### 數據訪問
+
+#### SQL
+
+##### 數據源自動配置
+
+###### 導入JDBC
+
++ 導入 `spring-boot-starter-data-jdbc` 場景
+
+  ``` xml
+  <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-data-jdbc</artifactId>
+      </dependency>
+  ```
+
++ 導入數據庫驅動(版本與數據庫建議一致)
+
+  ``` xml
+  <dependency>
+      <groupId>mysql</groupId>
+      <artifactId>mysql-connector-java</artifactId>
+  </dependency>
+  ```
+
+> 關於如何修改版本仲裁的默認依賴版本，依賴管理章節有介紹
+
+###### 分析
+
+自動配置類：
+
++ DataSourceAutoConfiguration：數據源的配置
++ DataSourceTrancesactionManagerAutoConfiguration：事務管理器配置
++ JdbcTemplateAutoConfiguration：JdbcTemplate配置
++ XADataSourceAutoConfiguration：分布式事務配置
+
+
+
+#### NO-SQL
+
+
 
 ## SpringBoot響應式編程
 
