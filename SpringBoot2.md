@@ -2220,11 +2220,140 @@ ServletWebServerFactoryAutoConfiguration自動配置類，根據導入的server�
 自動配置類：
 
 + DataSourceAutoConfiguration：數據源的配置
+
 + DataSourceTrancesactionManagerAutoConfiguration：事務管理器配置
+
 + JdbcTemplateAutoConfiguration：JdbcTemplate配置
+
 + XADataSourceAutoConfiguration：分布式事務配置
 
+  
 
+:green_book:DataSourceAutoConfiguration：
+
++ 數據源配置，修改配置文件項 **spring.datasource** 開頭相關設定 。
++ 數據庫連接池配置生效與否，取決於是否有 DataSource 在IOC容器中。
++ 默認使用的數據連接池為 Hikari，spring-boot-starter-data-jdbc 默認使用該數據源
++ 當存在多個數據源依賴時，可以通過配置文件項 **spring.datasource.type**  指定。
+
+
+
+:large_blue_circle: 數據源配置：
+
+``` yaml
+datasource:
+    url: jdbc:mysql://localhost:3306/spring_demo
+    username: root
+    password: 1qaz2wsx
+    driver-class-name: com.mysql.cj.jdbc.Driver
+```
+
+##### 使用 Druid 數據源
+
+整合第三方技術的方式：
+
++ 自定義
++ starter
+
+這裡介紹使用阿里巴巴提供的starter，可以去github找到相關訊息。
+
+:one: 引入Durid場景
+
+``` xml
+<dependency>
+    <groupId>com.alibaba</groupId>
+    <artifactId>druid-spring-boot-starter</artifactId>
+    <version>1.2.6</version>
+</dependency>
+```
+
+:two: 查看DuridDataSourceAutoConfiguration或[官方文檔](https://github.com/alibaba/druid/tree/master/druid-spring-boot-starter)，對相應功能進行開啟。
+
+##### 整合 Mybatis
+
+:one: 引入Mybatis提供的starter
+
+``` xml
+<dependency>
+    <groupId>org.mybatis.spring.boot</groupId>
+    <artifactId>mybatis-spring-boot-starter</artifactId>
+    <version>2.1.4</version>
+</dependency>
+```
+
+MybatisAutoConfiguration 為MyBatis自動配置類，內部作了以下事情：
+
++ **容器中只能有一個 DataSource，否則MybatisAutoConfiguration失效**
++ 想要修改MyBatis的默認配置，可已修改applicat配置文件 **mybatis** 開頭配置項。
++ 配置 SqlSessionFactory
++ 配置 SqlSessionTemplate (實現SqlSession)
++ 配置 MapperScannerRegistrarNotFoundConfiguration ：掃描@Mapper修飾的Mpper
+
+默認配置已經做完大部分的事情，我們只需要接續以下步驟
+
+:two: application配置文件，配置Mybatis設定
+
+``` yaml
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/spring_demo
+    username: root
+    password: 1qaz2wsx
+    driver-class-name: com.mysql.cj.jdbc.Driver
+mybatis:
+  # 指定mapper映射文件放置位置
+  mapper-locations: classpath:mybatis/mapper/*.xml
+  # 指定mybatis主配置文件位置
+#  config-location: classpath:mybatis/mybatis-config.xml
+  configuration:
+    map-underscore-to-camel-case: true
+```
+
+> mybatis主配置文件可以直接使用 mybatis.configuration.* 配置項直接替代。
+>
+> **注意：指定主配置文件位置的 mybatis.config-location 不可與 mybatis.configuration.* 配置項共存，只能選擇一個使用。**
+
+:three: 編寫Mapper接口。(標註@Mapper註解)編寫
+
+``` java
+@Mapper
+public interface AccountMapper {
+    Account getAccountById(String id);
+}
+```
+
+:four: SQL映射文件對應Mapper接口
+
+``` xml
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.learning.springboot.mapper.AccountMapper">
+    
+    <select id="getAccountById" resultType="org.learning.springboot.entity.Account" >
+        select * from account
+        <where>
+            name = #{name}
+        </where>
+    </select>
+    
+</mapper>
+```
+
+######  @MapperScan
+
+@MapperScan 作用是告訴 Mybatis Mapper接口的基礎路徑，可以標註在SpringBoot主程序上，這樣每個Mapper接口可以不用標註@Mapper，也可以被Mybatis識別。
+
+> 不建議這樣使用
+
+###### MyBatis-Plus
+
+Mybatis-Plus 是一個 Mybatis 增強工具，在Mybatis的基礎上只做增強不做改變，為簡化開發，提高效率而生。
+
+[MyBatis-Plus官網](https://baomidou.com/)
+
+**IDEA使用MyBatis-Plus建議安裝MybatisX插件。**
 
 #### NO-SQL
 
