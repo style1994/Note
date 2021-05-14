@@ -2357,7 +2357,391 @@ Mybatis-Plus 是一個 Mybatis 增強工具，在Mybatis的基礎上只做增強
 
 #### NO-SQL
 
+##### Redis
 
+###### 簡介
+
+REmote DIctionary Server(Redis) 是一個由 Salavatore Sanfilipo 寫的 key-value 儲存系統，是**跨平台**的**非關係型數據庫**。
+
+Redis 是一個開源的使用 ANSI C 語言編寫，遵守 BBS 協議、支持網路、可基於內存、分布式、可持久性的**鍵值對(key-value)儲存數據庫**，並提供多種語言的 API。
+
+Redis 通常被稱為數據結構服務器，因為值可以是字符串(String)、哈希(Hash)、列表(List)、集合(Set)和有序集合(Sorted Set)等類型。
+
+###### 特色
+
+Redis 和其他 key-value 緩存產品對比有以下特色：
+
++ Redis 支持數據的持久化，可以將內存中的數據保存在硬碟中，重啟的時候可以在次加載進行使用。
++ Redis 不僅僅支持簡單的 key-value 類型的數據，同時還提供 list、set、zset、hash 等數據結構的儲存
++ Redis 支持數據的備份，即 master-slave 模式的數據備份
+
+###### 優勢
+
+:one: 性能極高：Redis 能讀的速度是 110000次/s，寫的速度是 81000次/s
+
+:two: 豐富的數據類型：Redis 支持二進制案例的 Strings、Lists、Hashes、Sets 即 Ordered Sets 數據類型。
+
+:three: 原子：Redis 的所有操作都是原子性的，要麼成功要麼失敗全部不執行。單個操作是原子性的。多個操作支持事務，即原子性。
+
+:four: 豐富的特性：Redis 還支持 publish/subscribe、通知、key、過期等等特性。 
+
+###### Redis自動配置
+
+導入 spring-boot-starter-data-redis 場景後，`RedisAutoConfiguration` 自動生效，Redis 相關設定值都綁定在 `RedisProperties`，**想要修改默認配置值，通過application配置文件中 spring.redis 配置項。**
+
+自動配置類還導入以下組件：
+
++ LettuceConnectionConfiguration：lettuce 客戶端的連接配置
+
+  配置 string.redis.client-type=lettuce 時，該自動配置類生效
+
++ JedisConnectionConfiguration：Jedis 客戶端的連接配置
+
+  配置 string.redis.client-type=jedis 時，該自動配置類生效
+
++ RedisTemplate<Object, Object> 
+
++ StringRedisTemplate<String, String>
+
+> xxxTemplate 都是 Spring 用來操作相關技術的工具類
+
+###### SpringBoot 整合 Redis
+
+:one: 引入 `spring-boot-starter-data-redis` 場景
+
+:two: 配置redis配置連接訊息，使用以下格式：
+
+``` yaml
+redis:
+  host:
+  password:
+  port: 
+#上面三個可以使用url取代 格式: redis://user:password@example.com:6379
+  url: 
+```
+
+###### 切換客戶端
+
+spring-boot-starter-data-redis 場景默認是依賴於 Lettuce 客戶端，它是基於 netty 開發，併發性能較高。如果你習慣於 Jedis，可以通過以下方式切換：
+
+:one: 導入 Jedis 依賴(SpringBoot有進行版本仲裁)
+
+``` xml
+<dependency>
+    <groupId>redis.clients</groupId>
+    <artifactId>jedis</artifactId>
+<dependency>
+```
+
+:two: 通過application配置文件指定使用 Jedis 客戶端
+
+``` yaml
+  redis:
+    client-type: jedis
+```
+
+
+
+### 單元測試
+
+#### JUnit5的變化
+
+SpringBoot 2.2.0 版本引入 JUnit 5 作為單元測試默認庫。
+
+作為最新版本的 JUnit 框架，JUnit 5 與之前版本的 JUnit 框架有很大不同。由三個不同子項目的幾個不同模塊組成。
+
+>  JUnit5 = JUnit Platform + JUnit Jupiter + JUnit Vintage
+
++ JUnit Platform：JUnit Platform是在JVM上啟動單元測試框架的基礎，不僅支持Junit自製的測試引擎，其他測試引擎也可以接入。
++ JUnit Jupiter：JUnit Jupiter 提供了 JUnit5 的新編程模塊，是 JUnit5 新特性的核心，內部包含一個測試引擎，用於在 JUnit Platform 上運行。
++ JUnit Vintage：由於JUnit已經發展多年，為了兼容老舊項目，JUnit Vintage 提供兼容JUnit4.x、JUnit3.x的測試引擎。
+
+> SpringBoot 2.4 以上版本移除了默認對 Vintage 的依賴。如果需要兼容 Junit4 需要自行引入。
+
+##### SpringBoot 整合 JUnit
+
++ 測試類上使用一個 @SpringBootTest 標註即可
++ 測試方法使用 @Test 標註(import org.junit.jupiter.api.Test)
++ 測試類具有容器的功能，@Autowired 依賴注入、@Transactional 測試方法執行完自動回滾等
+
+#### 前後使用方式對照
+
+以前
+
+``` java
+@SpringBootTest
+@RunWith()
+public class Test{   
+}
+```
+
+JUnit 5
+
+``` java
+@SpringBootTest
+public class Test{    
+}
+```
+
+#### 使用方式
+
+:one: 引入 spring-boot-starter-test 場景
+
+:two: 編寫測試類
+
+#### JUnit5 常用註解
+
++ @Test：表示方法是測試方法，但是與 JUnit4 的 @Test 不同。它的職責非常單一不能聲明任何屬性，擴展的測試將由 Jupiter 提供額外的測試。
++ @ParamterizedTest：表示方法是參數化測試，下方有詳細介紹
++ @RepeatedTest：表示測試方法為重複執行測試
++ @DisplayName：為測試類或測試方法設置展示名稱
++ @BeforeEach：表示在**每個**單元測試之前執行
++ @AfterEach：表示在**每個**單元測試之後執行
++ @BeforeAll：方法在**所有**單元測試之前運行，方法須為static
++ @AfterAll： 方法在**所有**單元測試之後運行，方法須為static
++ @Tag：表示單元測試類別，類似 JUnit4 中的 @Categories
++ @Disable：表示測試類或測試方法不運行，類似於 JUnit4 中的 @Ignore
++ @Timeout：表示測試方法運行如果超過指定時間將會返回錯誤
++ @ExtendWith：為測試類或測試方法提供擴展類引用，取代@RunWith
+
+``` java
+@SpringBootTest
+public class Junit5Test {
+
+    @Test
+    public void test01() {
+        System.out.println("測試01");
+    }
+
+    @DisplayName("測試 Display 註解")
+    @Test
+    public void testDisplayName() {
+        System.out.println("測試 DisplayName 註解");
+    }
+
+    @BeforeEach
+    public void beforeEach() {
+        System.out.println("單元測試開始");
+    }
+
+    @AfterEach
+    public void afterEach() {
+        System.out.println("單元測試結束");
+    }
+
+    @BeforeAll
+    public static void beforeAll() {
+        System.out.println("所有測試準備開始 ...");
+    }
+
+    @AfterAll
+    public static void after() {
+        System.out.println("所有測試已經結束 ...");
+    }
+
+    @Timeout(value = 300, unit = TimeUnit.MILLISECONDS)
+    @Test
+    public void testTimeout() throws InterruptedException {
+        Thread.sleep(1000);
+    }
+
+    @RepeatedTest(6)
+    public void testRepeatedTest() {
+        System.out.println("Hello World");
+    }
+
+}
+
+```
+
+#### 斷言機制
+
+斷言 (assertions) 是測試方法中的核心部分，用來對測試需要滿足的條件進行驗證。這些斷言方法都是 org.junit.jupiter.api.Assertions 的靜態方法，**用於檢查業務邏輯返回的數據是否合理**。JUnit 5 內置Assertions工具類內的斷言可以分成如下幾個類別：
+
+##### 簡單斷言
+
+| 方法            | 說明                                                     |
+| --------------- | -------------------------------------------------------- |
+| assertEquals    | 判斷兩個對象或兩個原始類型是否"相等"(使用equals方法判斷) |
+| assertNotEquals | 判斷兩個對象或兩個原始類型是否"不相等"                   |
+| assertSame      | 判斷兩個對象引用是否指向同一個對象(使用==判斷)           |
+| assertNotSame   | 判斷兩個對象引用是否指向不同的對象                       |
+| assertTrue      | 判斷給定的布林值是否為 true                              |
+| assertFalse     | 判斷給定的布林值是否為 false                             |
+| assertNull      | 判斷給定的對象是否為 null                                |
+| assertNotNull   | 判斷給定的對象是否不為 null                              |
+
+##### 數組斷言
+
+通過 assertArrayEquals 方法來判斷兩個對象或原始類型的數組是否相等
+
+``` java
+@Test
+public void arrayAssertTest() {
+    int[] expect = new int[]{1, 2, 3, 4};
+    int[] actual = new int[]{1, 2, 3, 4};
+    Assertions.assertArrayEquals(expect, actual);
+}
+```
+
+##### 組合斷言
+
+assertAll 方法接受多個 org.junit.jupiter.api.Executable 函數式接口的實例作為要驗證的斷言，可以通過 lambda 表達式。
+
+``` java
+ @Test
+public void test01(){
+    Assertions.assertAll("測試max方法",
+                         () -> Assertions.assertEquals(1, Math.max(1, -19)),
+                         () -> Assertions.assertEquals(10, Math.abs(-10)),
+                         () -> Assertions.assertTrue(Math.pow(2, 2) == 4));
+}
+```
+
+##### 異常斷言
+
+| 方法               | 說明                                       |
+| ------------------ | ------------------------------------------ |
+| assertThrows       | 判斷拋出的異常是否為指定類型或相容類型異常 |
+| assertDoseNotThrow | 判斷程式是否沒有拋出異常                   |
+
+##### 超時斷言
+
+| 方法                      | 說明                                                         |
+| ------------------------- | ------------------------------------------------------------ |
+| assertTimeout             | 測試可執行程序是否在給定時間內完成，可執行程序會與當前方法在**同一個線程**中，當超時發生時，**不會停止可執行程序執行** |
+| assertTimeoutPreemptively | 測試可執行程序是否在給定時間內完成，可執行程序會與當前方法在**不同線程**中，當超時發生時，**停止可執行程序執行** |
+
+``` java
+@Test
+public void timeoutTest() {
+    System.out.println(Thread.currentThread().getName());
+    Assertions.assertTimeout(Duration.ofMillis(2000)
+                             , () -> {
+                                 // 判斷是否為相同線程
+                                 System.out.println(Thread.currentThread().getName());
+                                 Thread.sleep(3000);
+                                 // 判斷超時會不會繼續打印
+                                 System.out.println("Hello!!");
+                             });
+}
+```
+
+##### 快速失敗
+
+通過 fail 方法直接使測試失敗
+
+```java
+@Test
+public void fail(){
+Assertions.fail("主動失敗");
+}
+```
+
+#### 前置條件(assumptions)
+
+JUnit 5 中的前置條件，assumptions(假設)類似於斷言，不同之處在於**<font color="ff0000">不滿足的斷言會使程式測試方法失敗，而不滿足的假設會使測試方法中止執行(沒有錯誤報告)</font>**。前置條件可以看做是方法執行的前提，當前提不滿足時，也沒有繼續執行的必要了。
+
+Assumptions 工具類假設方法：
+
+| 方法         | 說明                   |
+| ------------ | ---------------------- |
+| assumeTrue   | 判斷假設是否成立       |
+| assumeFalse  | 判斷假設是否失敗       |
+| assumingThat | 判斷假設是否為成立失敗 |
+
+#### 嵌套測試
+
+JUnit 5 可以通過 Java 中的**內部類加上 @Nested 註解實現嵌套測試**，從而更好的把相關的測試方法組織在一起，而且嵌套的層次沒有限制。
+
+@Nested 註解只能使用在 non-static 內部類上
+
+> 外層的單元測試方法**不會**使內層的 @BeforeXXX 或 @AfterXXX 方法被調用
+>
+> 內層的單元測試方法**會**使外層的 @BeforeXXX 或 @AfterXXX 方法被調用
+
+``` java
+public class NestedTest {
+
+    @BeforeAll
+    public static void beforeAll() {
+        System.out.println("before all test [begin]");
+    }
+
+    @AfterAll
+    public static void afterAll() {
+        System.out.println("after all test [end]");
+    }
+
+    @Test
+    public void outTest() {
+        System.out.println("out test");
+    }
+
+    @Nested
+    class Inner {
+
+        @Test
+        public void innerTest() {
+            System.out.println("inner");
+        }
+
+        @BeforeEach
+        public void beforeEach() {
+            System.out.println("before each test [begin]");
+        }
+
+        @AfterEach
+        public void afterEach() {
+            System.out.println("after each test [end]");
+        }
+    }
+}
+
+```
+
+#### 參數化測試
+
+參數化測試是JUnit5很重要的一個新特性，它使得用不同的參數多次運行測試程為了可能，也為我們單元測試帶來許多便利。
+
+@XXXSource 等註解，指定方法入參，我們將可以使用不同的參數進行多次單元測試，而不需要新增一個參數就新增一個單元測試，省略很多冗餘代碼。
+
+| 註解           | 說明                                                         |
+| -------------- | ------------------------------------------------------------ |
+| @ValueSource   | 為參數化測試指定入參來源，支持八大基礎類、String類型、Class類型 |
+| @NullSource    | 表示未參數化測試提供一個null入參                             |
+| @EmptySource   | 表示未參數化測試提供一個空字串、空數組、空集合入參。         |
+| @EnumSource    | 表示未參數化測試提供一個枚舉入參                             |
+| @CsvFileSource | 表示讀取指定csv文件內容作為參數化測試的入參                  |
+| @MethodSource  | 表示讀取指定**靜態方法**返回值(須為一個流Stream<T>)作為參數化測試測試入參 |
+
+> 參數化測試真正強大的地方在於它可以支持外部各類入參，如csv、json、yaml、甚至方法的返回值。只需要實現 ArgumentsProvider，任何外部文件都可以作為參數化測試的入參。
+
+``` java
+@SpringBootTest
+public class ParameterTest {
+
+    @Autowired
+    JdbcTemplate jdbcTemplate;
+
+    @ParameterizedTest
+    @ValueSource(ints = {1,2,3,4,5})
+    public void test01(int i){
+        System.out.println(i);
+        System.out.println(jdbcTemplate);
+    }
+
+    @ParameterizedTest
+    @MethodSource("getAllUsers")
+    public void test02(String names){
+        System.out.println(names);
+    }
+
+    public static Stream<String> getAllUsers(){
+        return Stream.of("James","Peter");
+    }
+}
+```
 
 ## SpringBoot響應式編程
 
