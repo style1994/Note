@@ -2743,5 +2743,163 @@ public class ParameterTest {
 }
 ```
 
+### 指標監控
+
+#### 簡介
+
+未來每一個微服務在雲端部署後，需要對其進行監控、追蹤、審計、控制等。SprngBoot 就抽取了 Actuator 場景，使得我們的微服務快速引用即可獲得生產級別的應用監控、審計等功能。
+
+``` xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-actuator</artifactId>
+</dependency>
+```
+
+#### 如何使用
+
++ 引入 Actuator 場景依賴
+
++ 訪問 http://localhost:8080/actuator/\*\*(\*\*為開啟的監控端點(Endpoint))。
+
++ 暴露所有監控訊息為HTTP
+
+  ``` yaml
+  management:
+    endpoints:
+      enabled-by-default: true # 暴露所有端點訊息
+      web:
+        exposure:
+          include: '*' # 允許以web訪問所有端點
+  ```
+
++ 瀏覽器測試端點
+
+  http://localhost:8080/actuator/beans
+
+  http://localhost:8080/actuator/configprops
+
+  http://localhost:8080/actuator/env
+
+  http://localhost:8080/actuator/metrics
+
+  http://localhost:8080/actuator/metrics/http.server.requests
+
+#### Actuator Endpoint
+
+##### 端點
+
+| 端點               | 說明                                                         |
+| ------------------ | ------------------------------------------------------------ |
+| `auditevents`      | 暴露當前應用程序的審核事件訊息。需要一個 `AuditEventRepository` 組件 |
+| `beans`            | 顯示應用程序中所有 Spring Bean 的完整列表                    |
+| `cache`            | 暴露可用的緩存                                               |
+| `conditions`       | 顯示自動配置的所有條件訊息，包含生效與不生效的原因           |
+| `configprops`      | 顯示所有  `@ConfigurationProperties`                         |
+| `env`              | 暴露所有屬性 `ConfigurableEnviroment`                        |
+| `flyway`           | 顯示已應用的所有 Flyway數據庫遷移，需要一個或多個 Fly 組件   |
+| `health`           | 顯示應用程序運形狀況信息                                     |
+| `httptrace`        | 顯示 http 跟蹤訊息 ( 默認情況下，紀錄最近100個HTTP請求-響應)。需要一個 `HttpTraceRepository` 組件 |
+| `info`             | 顯示應用程序訊息                                             |
+| `integrationgraph` | 顯示 Spring integrationgraph。需要依賴 `spring-integrationgraph-core` |
+| `loggers`          | 顯示和修改應用程序中日誌的配置                               |
+| `liquibase`        | 顯示已應用的所有 Liquibase 數據庫遷移，需要一個或多個 `Liquibase` 組件 |
+| `metrics`          | 顯示當前應用的「指標」訊息                                   |
+| `mappings`         | 顯示所有 `@RquestMapping` 路徑訊息                           |
+| `scheduledtasks`   | 顯示應用程序中的計畫任務                                     |
+| `sessions`         | 允許從 `Spring Session` 支持的會話存儲中檢索和刪除用戶會話，需要使用 `Spring Session` 的基於servlet 的 web 應用程序 |
+| `startup`          | 顯示由 `ApplicationStartup` 收集的啟動步驟數據。需要使用 `SpringApplication` 進行配置 `BufferingApplicationStartup` |
+| `shutdown`         | 使應用程序正常關閉，默認禁用                                 |
+| `threaddump`       | 執行線程轉儲                                                 |
+
+如果你的應用程序是web應用程序 (Spring MVC、Spring Webflux 或 Jersey)，則可以使用以下附加端點：
+
+| 端點         | 說明                                                         |
+| ------------ | ------------------------------------------------------------ |
+| `headdump`   | 返回 `hprof` 堆轉儲文件                                      |
+| `jolokia`    | 通過 HTTP 暴露 JMX bean (需要引入 Jolokia，不適用於 WebFlux)，需要引入依賴 `jolokia-core` |
+| `logfile`    | 返回日誌文件的內容(如果以設置`logging.file.name` 或 `logging.file.path` 屬性)。支持使用 HTTP Range 標頭來索引部分日誌文件的內容 |
+| `prometheus` | 以 `Prometheus` 服務器可以抓取的格式公開指標。需要依賴 `micrometer-registry-prometheus` |
+
+最常用的端點
+
++ Health：健康狀況
++ Metrics：運行時指標
++ Loggers：日誌紀錄
+
+#### Health Endpoint
+
+健康監控端點，一般用於雲平台，平台定時的檢查應用的健康狀態，我們就需要Health Endpoint可以為平台返回當前應用的一系列組件健康狀況組合
+
+重點：
+
++ Health Endpoint 返回的結果，應該是一系列健康檢查後的一系列彙總報告
++ 很多健康檢查默認已經自動配置好了，例如：數據庫、redis等
++ 可以很容易的添加自定義的健康檢查機制
+
+健康檢查端點默認返回一個匯總訊息，但是我們應用中整合許多東西，例如：數據庫、redis等等。我們想要知道是哪一個部分出現問題，這時就可以通過以下配置開啟詳細訊息
+
+``` yaml
+management:
+  endpoints:
+    enabled-by-default: false # 開啟所有端點監控，默認true
+    web:
+      exposure:
+        include: '*' # 允許以web方式訪問所有端點，默認 health、info
+  endpoint:
+    health:
+      show-details: always # 顯示健康檢查監控詳細訊息
+```
+
+> `management.endpoints.xxx` 下的配置是針對所有監控端點
+>
+> `management.endpoint.端點名.xxx` 是針對各別端點的配置
+
+#### Metrics  Endpoint
+
+提供詳細的、層級的、空間指標訊息。這些訊息可以被主動推送或被動獲取方式得到
+
++ 通過 Metrics 對接多種監控系統
++ 簡化核心 Metrics 開發
++ 添加自定義 Metrics 或者擴展已有的 Metrics
+
+#### 開啟與關閉各別端點
+
+在如何使用章節時，我們有做過以下配置，該設定會開啟所有的端點監控功能，即應用可以使用的端點。
+
+``` yaml
+management:
+  endpoints:
+    enabled-by-default: true # 開啟所有端點監控，默認true
+```
+
+但是有些敏感的訊息我們並不想要開放，這時我們就可以關閉所有端點，然後在通過各別端點下的 `enable` 設置開啟，這樣就可以達到控制開啟的端點。
+
+``` yaml
+management:
+  endpoints:
+    enabled-by-default: false # 將使用默認開啟端點改為false，我們要自己決定開啟的端點
+    web:
+      exposure:
+        include: '*' # 允許以web訪問所有端點
+  endpoint:
+    health:
+      show-details: always # 顯示健康檢查監控詳細訊息
+      enabled: true
+    info:
+      enabled: true
+    beans:
+      enabled: true
+```
+
+#### 暴露 Endpoint
+
+支持訪問監控端點的方式：
+
++ HTTP：默認只暴露 health 和 info 監控端點
++ JMX：默認暴露所有端點(cmd使用jconsole開啟)
+
+> 除過 health 和 info，剩下的監控端點都應該進行保護訪問。如果引入 SpringSecurity，則會默認配置安全訪問規則。
+
 ## SpringBoot響應式編程
 
