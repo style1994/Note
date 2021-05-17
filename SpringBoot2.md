@@ -2901,5 +2901,441 @@ management:
 
 > 除過 health 和 info，剩下的監控端點都應該進行保護訪問。如果引入 SpringSecurity，則會默認配置安全訪問規則。
 
+#### 自定義 Endpoint
+
+健康檢查默認的詳細訊息可能不符合你的要求，當你需要對應用中的組件做健康檢查，SpringBoot 提供自定義 EndPoint，以符合應用具體的需求。
+
+實現 `xxxIndicator` 接口，並放置到ioc容器中，SpringBoot會自動應用這些自訂一的監控端點
+
+##### 訂制 Health 訊息
+
++ 實現 HealthIndicator接口
+
+  SpringBoot 有個 `AbstractHealthIndicator` 抽象類已經實現該接口，所以可以直接繼承該抽象類，實現`doHealthCheck`抽象方法 
+
++ 將實現類加入倒ioc容器中
+
+範例：
+
+``` java
+/**
+ * 針對Pet組件的健康檢查
+ * 健康檢查訊息階層是：
+ * components > 類名(去掉 HealthIndicator) > 詳細訊息
+ */
+@Component //要放入ioc容器中
+public class PetHealthIndicator extends AbstractHealthIndicator {
+    @Override
+    protected void doHealthCheck(Health.Builder builder) throws Exception {
+        boolean result = true;
+
+        // 健康檢查邏輯
+        if(result){
+            builder.up(); //健康
+        }else {
+            builder.down(); // 不健康
+        }
+
+        // 也可以添加詳細訊息
+        Map<String, String> detailMessage = new HashMap<>();
+        detailMessage.put("weight", "99kg");
+        detailMessage.put("message", "too heavy");
+
+        builder.withDetails(detailMessage);
+    }
+}
+```
+
+##### 訂制 info 訊息
+
+有兩種方式：
+
++ 編寫配置文件
++ 實現 InfoContributor 接口
+
+###### 配置文件方式
+
+只要在 application 配置文件 info 下編寫的訊息， info 監控端點就會顯示所定義的訊息。
+
+``` yaml
+info:
+  projectName: springBootLearning
+  projectVersion: 1.0.0
+```
+
+如果你想獲取pom文件中定義的版本訊息，在info中可以使用「@標籤階層@」表達式。如果你觀察pom文件的階層，它是由最外層的project標籤包裹其他標籤，所以使用「project.**.標籤名」取得pom文件定義的訊息。
+
+``` yaml
+info:
+  projectName: springBootLearning
+  projectVersion: 1.0.0
+  # 使用 @階層@ 取得maven pom文件訊息
+  mavenArtifactId: @project.artifactId@
+  mavenVersion: @project.version@
+  description: @project.description@
+```
+
+###### 實現 InfoContributor 接口
+
+如果 info 信息無法一開始就定義好，而是要根據運行的狀況做改變的話，那麼直接在配置文件中寫死就不符合該需求，**SpringBoot 會將容器中實現 InfoContributor 接口的組件，也加入到 info 信息中。**
+
+``` java
+// 要放入容器中才會生效
+@Component
+public class MyInfo implements InfoContributor {
+    @Override
+    public void contribute(Info.Builder builder) {
+        // 輸出 info 自定義訊息
+        builder.withDetail("版本", "v1.0.0");
+    }
+}
+```
+
+##### 訂制 Metrics 訊息
+
+SpringBoot 自動配置了許多指標，如果還有其他的需求，可以通過自定義的方式，添加指標。
+
+引入 actuator 場景依賴時，裡面引入了 `micrometer-core`，提供了 metrics 訂制的相關工具。我們可以在想要做監控的位置，例如：controller、service等地方，在**構造器注入 `MeterRegistry`，進行指標的登記。**
+
+``` java
+
+@RestController
+public class PetController {
+    private final Counter counter;
+    
+    //構造器注入
+    public PetController(MeterRegistry registry){
+        // 註冊並取得 Counter
+        counter = registry.counter("petService.pet01.count");
+
+    }
+
+    @GetMapping("/pet01")
+    public Pet converterTest(@RequestParam("petInfo") Pet pet){
+        // 每次呼叫 +1
+        counter.increment();
+        return pet;
+    }
+}
+
+```
+
+##### 自定義監控端點
+
+除了對已有的監控端點做內容的定制以外，SpringBoot 也提供自定義監控端點。`org.springframework.boot.actuate.endpoint.annotation` 提供許多定義端點會使用到的註解
+
++ @Endpoint 標註在類上，指明這是一個監控端點，註解的 id 屬性指定端點的名稱
++ @ReadOperation 註解修飾在方法上(無參數)，標註該方法會在監控端點被訪問時呼叫，方法返回值可以是 Map，它會以 json 格式輸出。
++ @WriteOperation 註解修飾在方法上，可以定義端點內部的互動，讓你可以透過端點來管理整個應用。(需要透過JMX方式操作，web無法)
+
+> 監控端點會參與應用的管理
+
+``` java
+@Component
+@Endpoint(id = "myEndpoint")
+public class MyEndpoint {
+
+    @ReadOperation
+    public Map<String, Object> getMessage() {
+        Map<String, Object> message = new HashMap<>();
+        message.put("info", "自定義監控端點");
+
+        return message;
+    }
+
+    @WriteOperation
+    public void sayHi() {
+        System.out.println("Hello");
+    }
+}
+
+```
+
+#### 可視化
+
+GitHub上的一個開源項目 [spring-boot-admin](https://github.com/codecentric/spring-boot-admin)
+
+原理就是架設一個 spring-boot-admin 的 server，它會給註冊的應用，每過一小段時間就發送請求，獲取監控指標訊息，把它轉換為一個大的web儀表板。
+
+在架設 server 時，需要注意以下幾點：
+
++ 本機同時開啟 server 和 自有專案，端口號可能會有衝突，所以須修改 server的端口號。(`server.port`)
++ 自有專案向 server 進行註冊時，默認是使用hostname方式進行註冊，但是本機名稱並不能作為域名，所以要開啟使用本機ip方式(spring.boot.admin.client.instance.prefer-ip = true)
+
+### Profile
+
+為了簡化多環境適配，SpringBoot 簡化了 profile 功能
+
+> 當沒有指定環境，環境名稱是 default(默認)
+
+#### application-profile 功能
+
++ 默認配置文件 application.xml **任何時候都會加載**
+
++ 指定環境配置文件 application-(env).xml
+
++ 啟動環境配置
+
+  + 默認配置文件上指定啟動的環境
+
+    ``` yaml
+    spring:
+      profiles:
+          active: test #指定環境 
+    ```
+
+  + 命令行啟動
+
+    用於項目打包後，配置文件已經設定死環境，啟動時可以通過傳遞參數切換
+
+    ``` 
+    java -jar jar檔名稱 --spring.profiles.active=環境名
+    ```
+
++ 默認配置與環境配置同時生效
+
++ **同名配置項，profile配置優先** 
+
+#### @Profile
+
+@Profile 修飾在類上、方法上，可以根據環境條件裝配類或方法的配置。
+
+``` java
+@Configuration
+public class EnvConfig {
+
+    @Profile("prod")
+    @Bean
+    public Pet godzilla() {
+        return new Pet("godzilla", 38d);
+    }
+
+    @Profile("test")
+    @Bean
+    public Pet superMan() {
+        return new Pet("superMan", 100d);
+    }
+}
+
+```
+
+``` properties
+spring.profiles.active=test
+```
+
+#### profile 分組
+
+SpringBoot 提供環境標示進行分組的功能。相同組別的環境名稱以索引來加入 [0]、[1]、…等。
+
+``` properties
+spring.profiles.group.組名[0]=環境名稱
+spring.profiles.group.組名[1]=環境名稱
+spring.profiles.group.組名[2]=環境名稱
+...
+```
+
+``spring.profiles.active`，可以指定組名，這樣可以一次性加載多個環境名稱。
+
+``` properties
+spring.profiles.active=t2
+# t1組
+spring.profiles.group.t1[0]=test
+# t2組
+spring.profiles.group.t2[0]=prod
+spring.profiles.group.t2[1]=abc
+```
+
+### 外部化配置
+
+SpringBoot 官方文檔對外部化配置講解得非常詳細，詳情請見[外部化配置(Externalized Configuration章節)](https://docs.spring.io/spring-boot/docs/current/reference/html/spring-boot-features.html#boot-features-external-config-typesafe-configuration-properties)。
+
+#### 外部配置允許的資源
+
+常用：properties文件、yaml文件、環境變量、命令行參數
+
+#### apolication配置文件查找位置
+
+下方以**查找順序**，列出查找的位置：
+
+1. classpath 根路徑
+2. classpath 根路徑下 config 目錄
+3. jar包當前目錄
+4. jar包當前目錄的 config 目錄
+5. /config 子目錄的直接子目錄(linux下才能演示)
+
+>  **當配置項有衝突時，先加載的配置項會被後加載的覆蓋掉**
+
+#### 有無環境的配置文件加載順序
+
+1. 當前jar包內部的 application.properties 和 application.yaml
+2. 當前jar包內部的 application-{profile}.properties 和 application-{profile}.yaml
+3. 引用外部jar包的 application.properties 和 application.yaml
+4. 引用外部jar包的 application-{profile}.properties 和 application-{profile}.yaml
+
+### 自定義 starter
+
+觀察官方提供的 starter 依賴內包含哪些共通的東西，可以發現大部分的 starter 都有以下結構：
+
++ xxx starter 會引入 xxx AutoConfiguration 依賴
++ xxxAutoConfiguration 會將自動配置中可配置項抽取到 xxxProperties中
++ resources 下會提供 <font color="ff0000">META-INF/spring.factories</font> 文件
+  + 文件內部 EnableAutoConfiguration 配置項的值，指定要加載的自動配置類
+
+經過上方的分析，得知要創建自己的starter，需要建構兩個項目：
+
++ starter 項目：目的只是引入我們自定義的AutoConfiguration項目依賴
++ AutoConfiguration項目：內部有自動配置的邏輯(條件裝配)，內部會引入 spring-boot-starter 依賴
+
+建立編寫完這兩個個項目後，將其打包至 maven 中央倉庫(install指令)中，就可以在其他SpringBoot專案，使用這個 starter 
+
+#### 範例
+
++ pet-service-spring-boot-starter
+
+  引入 pet-service-autoconfiguration 依賴
+
+  ``` xml
+  <?xml version="1.0" encoding="UTF-8"?>
+  <project xmlns="http://maven.apache.org/POM/4.0.0"
+           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+      <modelVersion>4.0.0</modelVersion>
+  
+      <groupId>org.godzilla</groupId>
+      <artifactId>pet-service-spring-boot-starter</artifactId>
+      <version>1.0-SNAPSHOT</version>
+  
+      <properties>
+          <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+      </properties>
+  
+      <dependencies>
+          <dependency>
+              <groupId>org.godzilla</groupId>
+              <artifactId>pet-service-autoconfiguration</artifactId>
+              <version>0.0.1-SNAPSHOT</version>
+          </dependency>
+      </dependencies>
+  
+  
+  </project>
+  ```
+
++ pet-service-autoconfiguration
+
+  引入 spring-boot-start 依賴
+
+  ``` java
+  <?xml version="1.0" encoding="UTF-8"?>
+  <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+      <modelVersion>4.0.0</modelVersion>
+      <parent>
+          <groupId>org.springframework.boot</groupId>
+          <artifactId>spring-boot-starter-parent</artifactId>
+          <version>2.4.5</version>
+          <relativePath/> <!-- lookup parent from repository -->
+      </parent>
+      <groupId>org.godzilla</groupId>
+      <artifactId>pet-service-autoconfiguration</artifactId>
+      <version>0.0.1-SNAPSHOT</version>
+      <name>pet-service-autoconfiguration</name>
+      <description>pet service autoconfiguration</description>
+      <properties>
+          <java.version>1.8</java.version>
+      </properties>
+      <dependencies>
+          <dependency>
+              <groupId>org.springframework.boot</groupId>
+              <artifactId>spring-boot-starter</artifactId>
+          </dependency>
+      </dependencies>
+  
+  </project>
+  
+  ```
+
+  編寫*Properties類，抽取配置項
+
+  ``` java
+  @ConfigurationProperties("pet.service")
+  public class PetServiceProperties {
+      private String prefix = "寵物：";
+      private String suffix = "say hi";
+  
+      public String getPrefix() {
+          return prefix;
+      }
+  
+      public void setPrefix(String prefix) {
+          this.prefix = prefix;
+      }
+  
+      public String getSuffix() {
+          return suffix;
+      }
+  
+      public void setSuffix(String suffix) {
+          this.suffix = suffix;
+      }
+  }
+  
+  ```
+
+  編寫具體starter的邏輯，正常是抽取在另外一個依賴，這裡方便演示
+
+  ``` java
+  public class PetService {
+  
+      private List<Pet> pets = new ArrayList<>();
+  
+      private final PetServiceProperties petServiceProperties;
+  
+      public PetService(PetServiceProperties petServiceProperties) {
+          this.petServiceProperties = petServiceProperties;
+      }
+  
+      public void registeredPet(String name, Integer age) {
+          if (StringUtils.hasText(name) && age >= 0) {
+              pets.add(new Pet(name, age));
+          } else {
+              throw new RuntimeException("registered pet fail");
+          }
+      }
+  
+      public void greet() {
+          String prefix = petServiceProperties.getPrefix();
+          String suffix = petServiceProperties.getSuffix();
+          for (Pet pet : pets) {
+              System.out.println(prefix + pet.getName() + suffix);
+          }
+      }
+  
+  }
+  
+  ```
+
+  編寫自動配置類
+
+  ```java
+  @EnableConfigurationProperties(PetServiceProperties.class)
+  @Configuration
+  public class PetServiceAutoConfig {
+  
+      @Bean
+      @ConditionalOnMissingBean(PetService.class)
+      public PetService petService(PetServiceProperties petServiceProperties) {
+          return new PetService(petServiceProperties);
+      }
+  }
+  ```
+
+  META-INFO/spring.factories，指定執行的自動配置類
+
+  ``` properties
+  org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
+    org.godzilla.auto.PetServiceAutoConfig
+  ```
+
 ## SpringBoot響應式編程
 
