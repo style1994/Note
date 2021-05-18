@@ -595,6 +595,8 @@ public @interface SpringBootConfiguration {
 
 指定組件掃描的基礎包
 
+> 當沒有配置值時，默認的掃描路就是該類所在包與其子包以下，這解釋了@Component 及 其他組件註解要放到主程序所在包底下
+
 ##### @EnableAutoConfiguration
 
 開啟自動配置，SpringBoot的自動配置就是使用此註解開啟
@@ -644,9 +646,9 @@ static class Registrar implements ImportBeanDefinitionRegistrar, DeterminableImp
 }
 ```
 
-可以知道它是一個靜態內部類，通過debug可以知道`getPackageNames()`得到的就是標註了`@SpringBootApplication`所在的包名，然後通過`register()`註冊該包底下的所有組件。
+可以知道它是一個靜態內部類，通過debug可以知道`getPackageNames()`得到的就是標註了`@SpringBootApplication`所在的包名，並將該基礎包路徑保存下來，作為讀取配置類的依據。
 
-這也解釋了為什麼要把組件放到與主程序同包或其子包下。
+>  這也解釋了為什麼將**配置類**放到主程序所在包或其子包下。
 
 ###### @Import(AutoConfigurationImportSelector.class)
 
@@ -713,9 +715,11 @@ public static List<String> loadFactoryNames(Class<?> factoryType, @Nullable Clas
 }
 ```
 
-終於找到候選配置是從哪裡讀取，在類路徑下的`META-INF/spring.factories`，我們剛剛得到候選配置為130個，`spring-boot-autoconfigure` jar下就有該文件，# Auto Configure 註解下的的默認配置類就剛好是130項。
+終於找到候選配置是從哪裡讀取，在類路徑下的`META-INF/spring.factories`文件，我們剛剛得到候選配置為130個，`spring-boot-autoconfigure` jar下就有該文件，且 org.springframework.boot.autoconfigure.EnableAutoConfiguration 下剛剛好就是有130個項目。
 
-結論：**<font color="ff0000">SpringBoot默認將所有場景一開始就進行加載</font>**，然後在通過**按需加載**機制，只為應用加載需要的場景，會下章節介紹。
+> 第三方框架提供starter場景，也是通過該機制，來加載自動配置類。而我們自定義starter 也是使用這樣的方式。
+
+結論：**<font color="ff0000">SpringBoot默認加載starter場景spring.factories指定的配置類</font>**，而這些配置類通過**條件裝配**機制(@Conditional註解)，根據條件決定該配置類是否生效，更多訊息會下章節介紹。
 
 ``` java
 private static Map<String, List<String>> loadSpringFactories(ClassLoader classLoader) {
@@ -729,13 +733,15 @@ private static Map<String, List<String>> loadSpringFactories(ClassLoader classLo
             // 默認配置文件，類路徑下META-INF/spring.factories
 			Enumeration<URL> urls = classLoader.getResources(FACTORIES_RESOURCE_LOCATION);
             // 以下省略...
-			
+
+```
+
+``` java
 
 #### 按需加載
 
 雖然SpringBoot所有自動配置默認啟動時全部加載，但是SpringBoot通過@Conditional註解來條件配置，只有所依賴的jar被導入時，這個自動配置才會生效。以下的 `AopAutoConfiguration` 就是很好的例子
-
-​``` java
+    
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(prefix = "spring.aop", name = "auto", havingValue = "true", matchIfMissing = true)
 public class AopAutoConfiguration {
@@ -752,7 +758,10 @@ public class AopAutoConfiguration {
 
 		}
 	// 以下省略部分源碼
+}
 ```
+
+
 
 #### 總結
 
@@ -934,7 +943,7 @@ user:
       - {name: buck, weight: 18}
 ```
 
-#### 顯示提示
+#### 顯示自定義*Properties提示
 
 在編寫`application.yaml`，SpringBoot相關的設定都有提示，自定義的類也可以讓其顯示提示，只需要以下設定：(官方文檔[Configuration Metadata](https://docs.spring.io/spring-boot/docs/current/reference/html/appendix-configuration-metadata.html#configuration-metadata)的Configuring the Annotation Processor小節)
 
@@ -979,17 +988,19 @@ If you want to take complete control of Spring MVC, you can add your own `@Confi
 
 ##### 靜態資源訪問
 
+可以查看官方文檔中的[Static Content](https://docs.spring.io/spring-boot/docs/current/reference/html/spring-boot-features.html#boot-features-application-events-and-listeners)章節，有更完整的介紹。
+
 ###### 靜態資源目錄
 
-SpringBoot默認靜態資源目錄放置在「類路徑下」的 `/static` (or `/public` or `resources` or `/META-INF/resources`)資料夾，ServletContext 的根目錄
+SpringBoot 默認靜態資源目錄在「類路徑下」的 `/static` (or `/public` or `resources` or `/META-INF/resources`) 資料夾或 ServletContext 的所指定的目錄
 
 + 原理：
 
-SpringBoot默認「靜態資源處理器」可以處理所有請求，但是**靜態資源處理器的優先級最低**。當請求到來時，會先由其他處理器來處理請求，當所有處理器都不能處理，才會交由靜態資源處理器來處理，它會去這些資料夾中找相同名稱的靜態資源，如果找不到，則404。
+默認「靜態資源 Controller」可以處理所有請求，但是**優先級最低**。當請求到來時，先由其他 Controller 來處理請求，只有當所有 Controller 都不能處理時，才由靜態資源 Controller 處理，它默認會去這些靜態資源資料夾中找尋相同名稱檔案，如果這些資料夾內都找不到，則返回404。
 
-+ 例：
++ 案例：
 
-  有個Controller可以處理一個與靜態資源名稱相同的請求，那麼該請求到來時，結果是由Controller處理，而不是返回靜態資源，因Controller優先級較高且能處理。
+  某個 TestController 可以處理與靜態資源名稱相同的請求，那麼該請求到來時，會由 TestController處理，而不是返回該靜態資源，因 TestController 優先級較高。
 
 ###### 修改靜態資源訪問目錄
 
@@ -1040,13 +1051,13 @@ SpringBoot會在靜態資源路徑內找尋 `favicon.ico`檔案，並將其作�
 
 + **但是不可以配置靜態資源請求前綴**，會導致網站圖標失效
 
-#### 靜態資源配置原理
+#### 靜態資源的配置原理
 
 + SpringBoot啟動時加載 `*AutoConfiguration` 類(自動配置類)
 
-+ SpringMVC功能的自動配置類 `WebMvcAutoConfiguration`
++ SpringMVC功能的自動配置類為 `WebMvcAutoConfiguration`
 
-+ 確認 `WebMvcAutoConfiguration` 是否生效
++ 確認 `WebMvcAutoConfiguration` 的條件裝配規則
 
   ``` java
   @Configuration(proxyBeanMethods = false)
@@ -1088,6 +1099,7 @@ protected void addResourceHandlers(ResourceHandlerRegistry registry) {
         默認值: "classpath:/META-INF/resources/",
 			"classpath:/resources/", "classpath:/static/", "classpath:/public/"
 */        registration.addResourceLocations(this.resourceProperties.getStaticLocations());
+        // 默認一定會加入 servletContext的路徑
         if (servletContext != null) {
             registration.addResourceLocations(new ServletContextResource(servletContext, SERVLET_LOCATION));
         }
@@ -1253,42 +1265,42 @@ SpringBoot中控制器方法形參的實際參數值，實際上是由不同的�
 
 ##### 註解
 
-+ @PathVariable：獲取URL上的佔位符
-+ @RequestParam
-+ @RequestHeader
-+ @ModelAttribute
-+ @RequestBody
-+ @CookieValue
-+ @RequestAttribute
-+ @SessionAttribute
-+ @MatrixVariable
++ @PathVariable：獲取 url-pattern 上的佔位符
++ @RequestParam：獲取指定名稱的請求參數值
++ @RequestHeader：獲取指定名稱的請求頭值
++ @ModelAttribute：用在方法參數是獲取在隱含模型中的數據，標註在方法上則是該 Controller 內的處理請求方法，執行前，該方法會先被運行。
++ @RequestBody：獲取請求體
++ @CookieValue：獲取指定名稱的cookie值
++ @RequestAttribute：獲取request域中的屬性值
++ @SessionAttribute：獲取session域中的屬性值
++ @MatrixVariable：獲取 url-pattern 上佔位符的矩陣變量
 
-###### 矩陣註解
+上面大多數的註解都已經在 spring-mvc 有詳細的介紹，這裡就不再多做講解，只會挑選出 spring-mvc 沒有提到的註解做說明
 
-要使用矩陣變量需要在SpringBoot中手動開啟，根據RFC3986的規範，**<font color="ff0000">矩陣變量應該綁定在路徑變量</font>**中。若是有多個矩陣變量，應該使用「;」進行分隔，一個矩陣變量有多個值，使用「,」進行分隔，或者命名多個重複的key即可。
+###### 矩陣變量
+
+根據RFC3986的規範，**<font color="ff0000">矩陣變量應該綁定在路徑變量(佔位符)</font>**中。有多個矩陣變量，應該使用分號(;)進行分隔，一個矩陣變量有多個值，使用逗號(,)進行分隔，或者多個重複的key指定不同值。
 
 例如：下面兩個寫法具有相同的作用
 
 1. `/cars/sell;low=34;brand=byd,audi,yd` 
 2.  `/cars/sell;low=34;brand=byd;brand=audi;brand=yd`。
 
-要取得路徑變量中的矩陣變量訊息，使用@MatrixVariable註解。
+@MatrixVariable註解，可以取得路徑變量(佔位符)中的矩陣變量值。
 
-+ @MatrixVariable：獲取路徑變量中的矩陣變量
++ 屬性：
+  + value：矩陣變量的key
+  + pathVar：指定路徑變量的名稱
 
-  + 屬性：
-    + value：矩陣變量的key
-    + pathVar：指定路徑變量的名稱
+> **每層**路徑都可以宣告矩陣變量，所以才會限定使用在**路徑變量**，不然每當多層以上的路徑有相同名稱的矩陣變量無法分辨。
 
-> **每層**路徑都可以宣告在矩陣變量中，所以才所是綁定在**路徑變量**。與我們常用的queryString不一樣，兩個可以同時使用，比較特別的變數可以定義在矩陣變量中，與查詢字串區分開。
->
-> 例如：被禁用cookie後，會改由請求參數傳遞 jsessionid，可以改成使用矩陣變量方式傳遞，跟請求參數區分開來。
+矩陣變量與常用的queryString不一樣，它們可以同時使用，當有比較特**別的變數就可以定義在矩陣變量中**，與查詢字串區分開。例如：被禁用cookie後，如果要使用session功能，就會改為使用請求參數方式傳遞 jsessionid 值，現在可以使用矩陣變量方式傳遞，與請求參數區分開來。
 
 ###### 開啟矩陣變量
 
-SpringBoot默認關閉矩陣變量，如果要使用矩陣變量，需要手動開啟。對於URL路徑的解析是通過 `UrlPathHelper`，通過調整屬性值來開啟矩陣變量
+SpringBoot 默認是關閉矩陣變量，使用時需要在配置中手動開啟。對於URL路徑的解析是通過 `UrlPathHelper` 組件，通過調整該組件的屬性值來開啟矩陣變量
 
-+  `removeSemicolonContent` 是否移除URL分號內容，因為矩陣變量是使用分號來作為分隔符，所以當該屬性默認為 `true` 時，矩陣變量失效
+`removeSemicolonContent` 屬性決定是否移除URL分號內容，因為矩陣變量是使用分號來作為分隔符，所以當該屬性默認為 `true` 時，矩陣變量失效。SpringBoot 默認為 true
 
 ``` java
 @Override
@@ -1318,8 +1330,8 @@ public void configurePathMatch(PathMatchConfigurer configurer) {
 
 有兩個方式：
 
-1. 讓我們的配置類實現該接口，並且重寫`configurePathMatch`方法
-2. 通過`@Bean`註冊至容器中
+1. 讓我們的配置類實現該 WebMvcConfigurer 接口，並且重寫`configurePathMatch`方法，取代自動配置類的設定。
+2. 項目啟動後，通過 @Autowired 取得容器中的 UrlPathHelper，將該屬性值設置為 false。
 
 範例：
 
@@ -1374,8 +1386,6 @@ public class MatrixController {
 }
 ```
 
-
-
 ##### Servlet API
 
 + WebRequest
@@ -1410,7 +1420,7 @@ public boolean supportsParameter(MethodParameter parameter) {
 }
 ```
 
-> 原生Srvlet API參數的解析賦值由 ServletRequestMethodArgumentResolver 這個參數解析器決定
+> 控制器方法的原生Srvlet API參數的賦值由 ServletRequestMethodArgumentResolver 這個參數解析器決定
 
 ##### 複雜參數
 
@@ -1424,33 +1434,34 @@ public boolean supportsParameter(MethodParameter parameter) {
 
 ###### Map 參數值
 
-+ MapMethodProcessor
++ 由 MapMethodProcessor 解析控制器方法參數
 + 解析後返回 BindingAwareModelMap
 
 ###### Model參數值
 
-+ ModelMethodProcessor 解析
++ 由 ModelMethodProcessor 解析控制器方法參數
 + 解析後返回 BindingAwareModelMap
 
-> 控制器方法形參為Map、Model最終會返回相同的BindingAwareModelMap對象
+> **控制器方法形參為Map、Model、ModelMap 最終會返回「相同」的BindingAwareModelMap 對象**
 
 ##### 自定義參數類型
 
-SpringMvc支持請求參數的封裝為自定義類型物件，在SpringBoot也是同樣的使用方式。
+SpringMvc支持將請求參數的封裝為自定義類型物件，在SpringBoot也是同樣的使用方式。只要參數名稱與自定義class屬性名稱相同，就會嘗試將請求參數轉換為對應的數據類型，並設置該屬性值。
 
 ###### 解析
 
-+ ServletModelAttributeMethodProcessor解析
-  + 決定基礎物件
-  + Web綁定器將請求參數綁定至對象屬性
-    + 轉換器做類型轉換與數據格式化
-  + Web綁定對物件做數據驗證
-  + 驗證結果封裝至 BindingResult
-+ 解析後返回自定義類型物件
++ 由 ServletModelAttributeMethodProcessor 參數值解析
+  + 決定控制器方法參數的基礎物件(是要創建還是沿用其他來源已有的)
+  + Web數據綁定器將請求參數綁定至基礎物件的屬性
+    + ConversionService 會負責請求參數的「數據類型轉換」與「數據格式」
+  + Web數據綁定器對基礎物件屬型值做數據驗證(方法參數有被 @Valid 標註才會進行數據校驗)
+  + 數據校驗的結果封裝至 BindingResult 物件中。(一個自定義類型物件會對應一個 BindingResult 物件 )
++ 為方法參數解析後的自定義類型物件
 
 ###### 自定義類型轉換器
 
-實現Converter接口，在`WebMvcConfigurer`組件中，重寫`addFormatters`方法，註冊自己的轉換器
+1. 實現 Converter 接口，自定義自己的類型轉換器。
+2. 配置類實現 `WebMvcConfigurer` 接口，重寫`addFormatters`方法，註冊自己的轉換器
 
 ``` java
 
@@ -1459,7 +1470,7 @@ public class WebConfig implements WebMvcConfigurer {
     @Override
     public void addFormatters(FormatterRegistry registry) {
         
-        // 實現轉換器
+        // 自定義 Converter
         Converter petConverter = new Converter<String, Pet>(){
             @Override
             public Pet convert(String source) {
@@ -1498,6 +1509,8 @@ public class PetController {
 #### 數據響應
 
 ##### 響應頁面
+
+控制器方法返回視圖名稱
 
 ##### 響應數據
 
@@ -1657,7 +1670,7 @@ public class WebConfig implements WebMvcConfigurer {
 
 當控制器方法返回的是數據而不是視圖名稱時，會使用 `@ResponseBody` 註解。
 
-1. `@ResponseBody`註解標註的控制器方法，會調用<font color="ff0000">`ReuqestResponseBodyMethodProcessor`</font>來處理方法的返回值。
+1. `@ResponseBody`註解標註的控制器方法，會調用<font color="ff0000">`RequestResponseBodyMethodProcessor`</font>來處理方法的返回值。
 2. 返回值處理器，內部會調用 MessageConverter 來處理，不同的 MessageConverter 分別處理不同媒體類型的數據，也代表著這個web應用可以響應與處理的媒體數據。
 3.  返回值處理器會根據客戶端可以接受的媒體類型與當前web應用可以提供的媒體類型進行比對(內容協商流程)
 4. 最終決定出「合適」的 MessageConverter 對方法返回值進行處理。
@@ -3336,6 +3349,106 @@ SpringBoot 官方文檔對外部化配置講解得非常詳細，詳情請見[�
   org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
     org.godzilla.auto.PetServiceAutoConfig
   ```
+
+### SpringBoot 啟動原理
+
+#### 啟動過程
+
+##### 創建SpringApplication
+
++ 保存一些訊息
++ 判斷當前應用類型(通常是servlet)
++ 找 <font color="ff0000">BootstrapRegistryInitializer (引導程序登記處初始化器)</font>
+  + 找 bootstrappers (初始啟動引導器)：**至 spring.factories 文件中找**org.springframework.boot.Bootstrapper。
++ 找 <font color="ff0000">ApplcationContextInitializer</font>：**至 spring.factories 文件中找**org.springframework.context.ApplicationContextInitializer。
++ 找 <font color="ff0000">ApplicationListener (應用監聽器)</font>：**至 spring.factories 文件中找**org.springframework.context.ApplicationListener
+
+##### 運行SpringApplication
+
++ 創建 StopWatch
+
++ 使用 StopWatch 紀錄應用的啟動時間
+
++ 創建**引導程序上下文** createBootstrapContext()
+
+  + 調用所有之前找到 bootstrapRegistryInitializer 的 initialize 方法，為引導程序上下文設置東西
+
++ 讓當前應用進入 **healess** 模式。**java.awt.headless**(詳情請google)
+
++ 獲取所有 <font color="ff0000">SpringApplicationRunListener (運行時監聽器)</font>
+
+  + **至 spring.factories 文件中找**，SpringApplicationRunListener
+
++ <font color="ff0000">調用所有SpringApplicationRunListener (運行時監聽器)的 starting 方法，通知它們項目正在啟動中  </font> 
+
++ 保存命令行參數 ApplicationArguments
+
++ 準備環境
+
+  + 返回或創建基礎環境訊息對象：StandardServletEnviroment(根據應用類型有所不同，這裡是servlet的)
+  + 配置基礎環境訊息對象
+    + 讀取所有配置源配置屬性值
+  + 綁定環境訊息
+  + <font color="ff0000">調用所有SpringApplicationRunListener (運行時監聽器)的 enviromentPrepared() 方法，通知它們當前環境準備完成 </font>
+
++ <font color="ff0000">創建 ioc 容器 createApplicationContext()</font>
+
+  + 根據當前項目類型創建容器，servlet會創建 AnnotationConfigServletWebServerApplicationContext
+
++ 準備 ioc 容器的基本訊息 prepareContext()
+
+  + IOC容器保存環境訊息
+
+  + IOC容器的後置處理流程
+
+  + <font color="ffoooo">應用初始化器，applyInitializers()</font>
+
+    + <font color="ff0000">forEach 所有 ApplcationContextInitializer 調用initialize 方法對ioc容器進行初始化擴展</font>
+
+    + <font color="ff0000">forEach 所有 SpringApplicationRunListener 調用 contextPrepared()，通知它們ioc容器已經「初始化完成」</font>
+
+      > 此時ioc容器內，沒有配置的組件
+
+  + <font color="ff0000">forEach 所有 SpringApplicationRunListener 調用 contextLoaded()，通知它們ioc容器「已經加載」</font>
+
++ 刷新ioc容器 reflashContext()
+
+  + 創建ioc容器中的所有組件
+
++ 刷新完成後的工作 afterReflash()
+
++ <font color="ff0000">forEach 所有 SpringApplicationRunListener 調用 started()，通知它們當前項目已經啟動</font>
+
+  > 此時ioc容器已經，加載所有配置的組件
+
++ 調用所有 runners callRunners()
+
+  + 獲取所有ioc容器中的 **ApplicationRunner.class** 組件
+  + 獲取所有ioc容器中的 **CommandLineRunner.class** 組件
+  + 將所有Runner都放到集合中，並按照 @Order 排序
+  + 遍歷執行所有集合中的Runner的run()方法
+
++ 如果以上步驟有異常
+
+  + <font color="ff0000">forEach 所有 SpringApplicationRunListener 調用 failed()，通知它們當前項目「啟動失敗」</font>
+
++ 如果全部步驟都正常
+
+  + <font color="ff0000">forEach 所有 SpringApplicationRunListener 調用 running()，通知它們當前項目「運行中」</font>
+
+#### Application Events and Listeners
+
++ ApplicationContextInitializer：ioc容器創建好後，進行初始化動作
+
++ ApplicationListener
+
+  應用各事件的發生時的監聽器，比SpringApplicationRunListener 還要更強大，**它不只可以監聽應用啟動時的事件**，而兩者在啟動事件發生時誰先執行，根據啟動事件會有所不同
+
+  > 在實現該應用監聽器時，泛型指定要監聽的 ApplicationEvent 事件類，SpringBoot會再事件發生時調用該監聽器的 onApplicationEvent 方法
+
++ SpringApplicationRunListener
+
+  應用啟動時，監聽各啟動流程的監聽器，會再某些重要流程執行前後被調用對應的方法。
 
 ## SpringBoot響應式編程
 
