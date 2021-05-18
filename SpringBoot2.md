@@ -1691,7 +1691,9 @@ public class WebConfig implements WebMvcConfigurer {
 
 ##### 視圖解析
 
-處理完請求進行跳轉到頁面的過程，被稱為視圖解析。SpringBoot 默認不支持 JSP，需要引入第三方模板引擎技術實現頁面渲染。原因是SpringBoot默認打包成jar包，屬於壓縮包的一種，而JSP不支持在壓縮包內編譯。
+處理完請求進行跳轉到頁面的過程，被稱為視圖解析。
+
+SpringBoot 默認不支持 JSP，需要引入第三方模板引擎技術實現頁面渲染。原因是SpringBoot默認打包成jar包，屬於壓縮包的一種，而JSP不支持在壓縮包內編譯。
 
 SpringBoot支持以下第三方模板引擎，freemarker、groovy-templates、thymeleaf
 
@@ -1702,9 +1704,30 @@ SpringBoot支持以下第三方模板引擎，freemarker、groovy-templates、th
 + 如果方法的參數是一個自定義類型對象(從請求參數中確定)，它也會重新放在 ModelAndViewContainer
 + 任何目標方法執行完後都會返回ModelAndView
 + processDispatchResult 方法處理派發結果(頁面如何響應)
-  + rander() 進行頁面渲染
-    + 根據方法返回值得到View對象。View對象定義頁面渲染邏輯
-      + **遍歷所有視圖解析器，解析視圖名稱得到視圖對象，直到有一個成功解析為止，如果全部失敗，拋出異常**
+  + 如果目標方法執行後返回的ModelAndView不為null，rander() 進行頁面渲染
+    + **遍歷所有視圖解析器，解析視圖名稱得到View對象，直到有一個成功解析為止，如果全部失敗，拋出異常**
+    + 調用View對象的render()方法，進行試圖的渲染
+
+> 目標方法執行後的 ModelAndView 如果為 null ，那不會經過後續的視圖名稱解析出視圖，視圖渲染過程。因為在處理方法返回值時，由返回值處理器直接處理完畢了。
+>
+> @ResponseBody 如果標註在控制器方法上，就會有上述的情況。當然也有可能是其他類型返回值造成的。
+
+> 視圖解析器作用是解析視圖名稱得到視圖對象，視圖對象作用為決定如何展示數據
+>
+> 數據會以各種不同方式展現，除了網頁已外，還能是各種檔案pdf、excel ... 。
+
+#### 控制器方法執行
+
+目標方法由 HanlderAdapter(執行器適配器)來執行，HTTP請求通常會由 RequestMappingHandlerAdapter 來處理，下面講解該適配器執行的邏輯
+
++ 參數解析器，用來解析目標方法的參數值(參數解析器會有多個)
+  + 會依據請求參數上的註解、參數類型等為依據，決定使用哪個參數解析器
++ 返回值處理器，用來處理執行完目標方法後的返回值(返回值處理器會有多個)
+  + 會依據目標方法的註解、目標方法返回值類型等訊息，決定由哪個返回值類型處理器
+
+> HanlderAdapter 執行完目標方法，會返回 ModelAndView 對象(可能為null)，如果不為null，會接續後續視圖解析過程。
+
+
 
 #### 模板引擎 - Thymeleaf
 
