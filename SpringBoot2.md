@@ -1131,9 +1131,10 @@ WelcomePageHandlerMapping(TemplateAvailabilityProviders templateAvailabilityProv
         logger.info("Adding welcome page: " + welcomePage);
         setRootViewName("forward:index.html");
     }
-    // 如果存在歡迎頁的模板
+    // 如果存在歡迎頁的模板且靜態文件映射不為/**
     else if (welcomeTemplateExists(templateAvailabilityProviders, applicationContext)) {
         logger.info("Adding welcome page template: index");
+        // 會找處理/index請求處理器
         setRootViewName("index");
     }
 }
@@ -1144,7 +1145,7 @@ WelcomePageHandlerMapping(TemplateAvailabilityProviders templateAvailabilityProv
 + 可以通過設置 `spring.web.resources.add-mapping` 為 `false` 禁用所有靜態資源默認配置
 + 可以通過設置 `spring.mvc.static-path-pattern` 設置靜態支援請求前綴
 + 可以通過設置 `spring.web.resources.static-locations` 設置靜態文件資料夾 
-+ 修改默認靜態頁面請求的前綴，歡迎頁功能失效
++ 修改默認靜態頁面請求的前綴，歡迎頁功能失效(可以改用/index 控制器方法來處理)
 + 靜態文件目錄下的歡迎頁優先級高於模板目錄下的歡迎頁
 
 #### 請求參數處理
@@ -1158,7 +1159,9 @@ WelcomePageHandlerMapping(TemplateAvailabilityProviders templateAvailabilityProv
   + 核心：HiddenHttpMethodFilter
     + 用法：表單 method=post，傳遞參數 _method=put
 
-想要在SpringBoot使用`HiddenHttpMethodFilter`，配置 `spring.mvc.hiddenmethod.filter.enable = true`。可以在 `WebMvcAutoConfiguration` 源碼中體現：
+想要在SpringBoot使用`HiddenHttpMethodFilter`，需配置 `spring.mvc.hiddenmethod.filter.enable = true`。
+
+可以在 `WebMvcAutoConfiguration` 源碼中體現：
 
 ``` java
 @Bean
@@ -1226,9 +1229,9 @@ private static class HttpMethodRequestWrapper extends HttpServletRequestWrapper 
 
 源碼解析：
 
-+ 過濾器會處理HTTP請求方式為 POST 且沒有錯誤的請求。
-+ 過濾器獲取 `_method` 請求參數，判斷是否存在
-+ `_method` 不區分大小寫
++ 過濾器會處理**請求方式為 POST 且沒有錯誤的請求**。
++ 獲取 `_method` 請求參數，判斷是否存在
++ `_method` 值不區分大小寫
 + 過濾器判斷是否支持所指定的請求方式，過濾器支持以下方式：
   + PUT
   + DELETE
@@ -1238,14 +1241,16 @@ private static class HttpMethodRequestWrapper extends HttpServletRequestWrapper 
   + `HttpMethodRequestWrapper` 重寫了 `HttpServletRequest` 的 `getMethod`方法，將方法返回值改為`_mehtod`參數
 + 過濾器將包裝過的 request 傳遞下去
 
-Spring 在進行請求映射就是調用 request 的 `getMethod`，Spring 取得的 request 為包裝過的，這也解釋為什麼 POST 表單變成其他請求。
+SpringMVC 在進行請求映射就是調用 request 的 `getMethod`，因為取得的 request 為包裝過的，所以映射到的就是我們指定的HTTP請求方式。
 
-##### 自定義請求方式的參數名稱
+##### 自定義指定HTTP請求方式的名稱
 
-`HttpMethodRequestWrapper` 默認是使用 `_method` 作為請求方是參數的名稱。只要容器中配置了 `HttpMethodRequestWrapper` 那麼自動配置就不會在進行配置。
+`HiddenHttpMethodFilter` 默認是使用 `_method` 指定HTTP請求方式參數名稱。
 
-+ 手動配置 `OrderedHiddenHttpMethodFilter`(源碼中是配這個bean)。
-+ 調用 `setMethodParam` 方法將設置為自定義的參數名稱。
+過濾器有條件裝配 @ConditionalOnMissingBean(HiddenHttpMethodFilter.class) 只要我們在容器手動配置了 `HiddenHttpMethodFilter` 自動配置就不會生效。
+
++ 手動配置 `OrderedHiddenHttpMethodFilter`(為HiddenHttpMethodFilter的子類)。
++ 調用 `setMethodParam` 方法將_method修改為自定義指定HTTP請求方式的名稱
 
 ``` java
 @Configuration
@@ -1259,11 +1264,69 @@ class MyConfig(){
 }
 ```
 
-#### 普通參數與基本註解
+##### 請求映射原理
+
+spring-mvc 核心就是通過 DispatcherServlet(前端控制器) 來接收處理所有的請求。而我們通過註解的方式，定義Controller來處理請求，前端控制器在應用啟動時，會掃描所有Controller內處理請求的方法，保存所有請求映射訊息。當請求產生時，前端控制器就能根據保存的映射訊息，找到能夠處理請求的方法。
+
+> DispatcherServlet 是一個 servlet，核心處理方法為 doDispatcher()
+
+**這些保存映射訊息的物件，為前端控制器的9大組件之一，HandlerMapping(處理器映射器)**。
+
+> Handler 指的就是指我們的 Controller 內處理請求的方法。
+
+下面為取得「執行鏈」的源碼，為什麼是執行鏈而不是目標方法呢，spring-mvc 提供攔截器功能，可以在特定 url-pattern 目標方法執行前讓攔截器先被執行。執行鏈包含目標方法與所有要執行的攔截器。而取得執行鏈就是 HandlerMapping (處理器映射器)的工作。
+
+``` java
+// Determine handler for the current request.
+mappedHandler = getHandler(processedRequest);
+
+
+@Nullable
+protected HandlerExecutionChain getHandler(HttpServletRequest request) throws Exception {
+    if (this.handlerMappings != null) {
+        for (HandlerMapping mapping : this.handlerMappings) {
+            HandlerExecutionChain handler = mapping.getHandler(request);
+            if (handler != null) {
+                return handler;
+            }
+        }
+    }
+    return null;
+}
+```
+
+內部邏輯是遍歷 HandlerMappings 集合，**順序執行**各 HandlerMapping 的 getHandler 方法，只要返回的執行鏈不為 null，結束方法運行。
+
+下面列出默認的 HandlerMapping：
+
++ RequestMappingHandlerMapping：保存 @RequestMapping 註解的請求映射訊息，**優先級最高**。
+
++ WelcomePageHandlerMapping：專門處理歡迎頁的請求
+
++ BeanNameUrlHandlerMapping
+
++ RouterFunctionMapping
+
++ SimpleUrlHandlerMapping
+
+  
+
+SpringBoot 在 WebMvcAutoConfiguration 自動配置兩個 HandlerMapping：
+
++ RequestMappingHandlerMapping
++ WelcomePageHandlerMapping
+
+
+
+如果有特殊的映射需要處理，我們也可以向 ioc 容器中添加自己的 HandlerMapping，默認初始化時，會至容器中找所有的 HandlerMapping 組件。
+
+
+
+##### 普通參數與基本註解
 
 SpringBoot中控制器方法形參的實際參數值，實際上是由不同的參數解析器負責解析，有專門處理特定註解，也有些是專門處理原生API等等。
 
-##### 註解
+###### 基本註解
 
 + @PathVariable：獲取 url-pattern 上的佔位符
 + @RequestParam：獲取指定名稱的請求參數值
@@ -1298,7 +1361,7 @@ SpringBoot中控制器方法形參的實際參數值，實際上是由不同的�
 
 ###### 開啟矩陣變量
 
-SpringBoot 默認是關閉矩陣變量，使用時需要在配置中手動開啟。對於URL路徑的解析是通過 `UrlPathHelper` 組件，通過調整該組件的屬性值來開啟矩陣變量
+SpringBoot 默認是關閉矩陣變量，需要在配置中手動開啟。對於URL路徑的解析是通過 `UrlPathHelper` 組件，通過調整該組件的屬性值來開啟矩陣變量
 
 `removeSemicolonContent` 屬性決定是否移除URL分號內容，因為矩陣變量是使用分號來作為分隔符，所以當該屬性默認為 `true` 時，矩陣變量失效。SpringBoot 默認為 true
 
@@ -1388,6 +1451,8 @@ public class MatrixController {
 
 ##### Servlet API
 
+spring-mvc 也支持的原生 Servlet API ，只要在控制器方法參數有以下類型的形參，spring-mvc 會自動幫你注入，只需要使用即可。
+
 + WebRequest
 + ServletRequest
 + MultipartRequest
@@ -1420,7 +1485,7 @@ public boolean supportsParameter(MethodParameter parameter) {
 }
 ```
 
-> 控制器方法的原生Srvlet API參數的賦值由 ServletRequestMethodArgumentResolver 這個參數解析器決定
+> Controller 方法的原生 Srvlet API 形參的賦值是由 ServletRequestMethodArgumentResolver (參數解析器)處理
 
 ##### 複雜參數
 
@@ -1506,36 +1571,173 @@ public class PetController {
 }
 ```
 
-#### 數據響應
+##### 各種類型參數解析原理
+
+###### HandlerAdapter 處理器映射器
+
+想要執行目標方法，首先需要能夠得知目標方法形參的值，才能夠調用反射執行目標方法。而執行目標方法的重要工作，是由 spring-mvc 9大組件中的 HandlerAdapter(處理器適配器)負責，HandlerAdapter 相當於一個超級反射工具，決定了方法參數值、方法返回值的處理。
+
++ 通過 HandlerMapping 找到處理請求的執行鏈
++ 通過執行鏈找到可以執行它的 HandlerAdapter
+
+和 HandlerMapping 一樣，通過遍歷所有 HandlerAdapter 組件，找到可以處理執行鏈的適配器。
+
+下面為找尋適配器的源碼，還可以**發現當所有適配器都無法處理時，會拋出異常**。
+
+``` java
+HandlerAdapter ha = getHandlerAdapter(mappedHandler.getHandler());
+
+
+protected HandlerAdapter getHandlerAdapter(Object handler) throws ServletException {
+    if (this.handlerAdapters != null) {
+        for (HandlerAdapter adapter : this.handlerAdapters) {
+            if (adapter.supports(handler)) {
+                return adapter;
+            }
+        }
+    }
+    throw new ServletException("No adapter for handler [" + handler +
+                               "]: The DispatcherServlet configuration needs to include a HandlerAdapter that supports this handler");
+}
+```
+
+默認配置的 HandlerAdapter 組件：
+
++ **RequestMappingHandlerAdapter**：支持方法上標註@RequestMapping註解的適配器
++ **HandlerFunctionAdapter**：支持函數式編程的適配器
++ HttpRequestHandlerAdapter
++ SimpleControllerHandlerAdapter
+
+前兩個是最常使用到的適配器。
+
+###### RequestMappingHandlerAdapter 內部原理
+
+標註了 @RequestMapping 註解的方法，也就是處理請求映射的方法，都是交由這個RequestMappingHandlerAdapter 來執行。將介紹內部執行原理
+
+``` java
+// Actually invoke the handler.
+mv = ha.handle(processedRequest, response, mappedHandler.getHandler());
+```
+
+
+
+###### 參數值解析器
+
+RequestMappingHandlerAdapter 內部是通過 HandlerMethodArgumentResolver(參數解析器)來解析目標方法的參數值。
+
+下面列出部分參數解析器：
+
++ **RequestParam**MethodArgumentResolver
++ **RequestParamMap**MethodArgumentResolver
++ …
+
+從解析器名稱的前綴就可以大概知道該參數解析器的作用，上面列出的這兩個，都是用來支持 @RequestParam 註解，第二個是用來支持 @RequestParam 修飾 Map 類型參數，可以取得所有請求參數的key-value。
+
+> spring-mvc 目標方法可以寫多少種參數值，取決於參數解析器是否支持
+
+HandlerMethodArgumentResolver(參數解析器) 為一個接口，所以我們也可以自定義自己的參數解析器，來處理自定義註解或特別的參數。以下為其接口的源碼：
+
+``` java
+public interface HandlerMethodArgumentResolver {
+    // 支持判斷
+    boolean supportsParameter(MethodParameter parameter);
+    @Nullable
+    // 解析參數的邏輯
+	Object resolveArgument(MethodParameter parameter, @Nullable ModelAndViewContainer mavContainer,
+			NativeWebRequest webRequest, @Nullable WebDataBinderFactory binderFactory) throws Exception;
+}
+```
+
+HandlerMethodArgumentResolver 接口設計的原理和 HandlerMapping、HandlerAdapter 相當類似，都是提供一個判斷是否支持的方法，一個處理的方法。
+
+你可能猜想到了，在解析參數的過程，就是遍歷多個參數解析器，判斷是否支持該參數，支持就調用解析方法。
+
+以下是找尋合適參數解析器源碼：
+
+``` java
+@Nullable
+private HandlerMethodArgumentResolver getArgumentResolver(MethodParameter parameter) {
+    HandlerMethodArgumentResolver result = this.argumentResolverCache.get(parameter);
+    if (result == null) {
+        // 遍歷每個參數類型解析器
+        for (HandlerMethodArgumentResolver resolver : this.argumentResolvers) {
+            // 判斷是否支持
+            if (resolver.supportsParameter(parameter)) {
+                result = resolver;
+                this.argumentResolverCache.put(parameter, result);
+                break;
+            }
+        }
+    }
+    return result;
+}
+```
+
+
+
+###### 返回值處理器
+
+RequestMappingHandlerAdapter 內部是通過 HandlerMethodReturnValueHandler(返回值處理器)來處理目標方法的「返回值」。
+
+下面列出部分返回值處理器：
+
++ **ModelAndView**MethodReturnValueHandler
++ **Model**MethodProcessor
++ **HttpEntity**MethodProcessor
++ …
+
+從返回值處理器的名稱前綴，就可以猜到是用來處理什麼返回值的，處理 ModelAndView、Model、HttpEntity。
+
+> spring-mvc 目標方法可以寫多少種返回值，取決於返回值處理器是否支持
+
+HandlerMethodReturnValueHandler(返回值處理器) 為一個接口，所以我們也可以自定義自己的返回值處理器，來處理原本不支援的返回值。以下為其接口的源碼：
+
+``` java
+public interface HandlerMethodReturnValueHandler {
+    // 支持判斷
+    boolean supportsReturnType(MethodParameter returnType);
+	// 處理返回值邏輯
+    void handleReturnValue(@Nullable Object returnValue, MethodParameter returnType,
+                           ModelAndViewContainer mavContainer, NativeWebRequest webRequest) throws Exception;
+}
+```
+
+HandlerMethodReturnValueHandler接口設計的原理和 HandlerMapping、HandlerAdapter 相當類似，都是提供一個判斷是否支持的方法，一個處理的方法。
+
+你可能猜想到了，在處理返回值的過程，就是遍歷多個返回值處理器，判斷是否支持該，支持就調用處理方法。
+
+#### 數據響應處理
 
 ##### 響應頁面
 
-控制器方法返回視圖名稱
+@Controller 標註的類，為普通控制器類，內部的方法返回值默認是進行頁面跳轉的。通常是 String類型、也可以是 ModelAndView等等。
+
+> Spring 在沒有引入模板引擎依賴時，不能進行頁面的開發，後面會介紹 Thymeleaf 模板引擎
 
 ##### 響應數據
 
-SpringBoot在處理方法返回值時，是通過各種 `HandlerMethodReturnValueHandler`(返回值處理器)來處理返回值。
+SpringBoot在處理方法返回值時，是通過各種 `HandlerMethodReturnValueHandler`(返回值處理器)來處理目標方法返回值。
+
+有些返回值處理器會進行內容協商，有些則是直接輸出json數據，連視圖解析都不需要，內部實現的邏輯都有所不同，所以**控制器方法的返回值不單單只能是視圖名稱**，而是各種各樣的，也可以自定義返回值處理器，來處理特殊的方法返回值。
 
 ###### 內容協商原理
 
-請求頭中(Accept)會標註瀏覽器可以接收的內容類型(MediaType)，而服務器本身可以響應不同類型的數據，**瀏覽器與服務器在溝通彼此都可以接收數據類型的過程，稱之為「內容協商」。**
+請求頭(Accept)會標註瀏覽器可以接收的內容類型(MediaType)，而服務器本身可以提供不同類型的數據，**客戶端與服務器在溝通彼此都可以接收數據類型的過程，稱之為「內容協商」。**
 
-> HttpMessageConverter 轉換是可以雙向了，取決於內部的設定，接口內部定義了canRead和canWrite方法
+> HttpMessageConverter 轉換是可以雙向了，接口內部定義了canRead和canWrite方法
 
 1. 判斷請求頭中是否有已經確定的媒體類型(MeidaType)。(需要攔截器)
 2. 獲取客戶端支持接收的媒體類型。。
    1. 由內容協商管理器(`ContentNegotiationManager`)，它默認策略(`HeaderContentNegotiationStrategy`)是解析請求頭的Accept訊息
    2. 內容協商策略可以通過 `WebMvcConfigurer` 的`configureContentNegotiation`方法增加。
-3. 遍歷所有`HttpMessageConverter`(消息轉換器)，將支持所有消息轉換器可以產出的媒體類型記錄下來，統計服務器可提供的媒體類型。
-4. 客戶端可以接受的媒體類型與服務器可以提供的媒體類型，取其「交集」，決定最終要使用的媒體類型。(根據客戶端所提供的媒體類型權重排序，權重較高者優先級越高)
-6. 遍歷所有`HttpMessageConverter`(消息轉換器)，看哪個支持控制器方法返回值類型又支持最終媒體類型，決定要最終要使用的消息轉換器。
-7. 使用消息轉換器處理方法返回器。 
-
-先前在數據綁定器中，介紹到類型轉換器，主要用於將請求數據轉換為方法的形參。而在這邊介紹到的`HttpMessageConverter`(消息轉換器)，是將方法返回值，轉為瀏覽器能接收的數據類型。
+3. 遍歷所有`HttpMessageConverter`(消息轉換器)，將所有消息轉換器可以產出的媒體類型記錄下來，統計服務器可提供的媒體類型。
+4. 客戶端可接受的媒體類型與服務器可提供的媒體類型，兩者取其「交集」，決定雙方都能接受的媒體類型集合，最後**根據客戶端所提供的媒體類型權重排序，權重較高者優先採用**。
+5. 遍歷所有`HttpMessageConverter`(消息轉換器)，支持方法返回值/參數類型又支持最佳媒體類型，找出適合的消息轉換器。
+6. 使用消息轉換器處理解析。 
 
 ###### 開啟瀏覽器參數方式內容協商功能
 
-在不使用 ajax 情況下，無法在瀏覽器設定自己想要的請求頭，SpringBoot支持以參數方式傳遞內容協商功能。**<font color="ff0000">默認只支持兩種媒禮類型，`xml`、`json`。</font>**
+在不使用 ajax 情況下，無法在瀏覽器設定自己想要的請求頭，SpringBoot 支持以參數方式傳遞內容協商功能。**<font color="ff0000">默認只支持兩種媒禮類型，`xml`、`json`。</font>**
 
 內部原理就是SpringBoot除了請求頭內容協商策略以外，在另外配置了`ParameterContentNegotiationStrategy` 這個內容協商策略，可以從請求參數值獲取媒體訊息(默認key是format)
 
@@ -1671,9 +1873,8 @@ public class WebConfig implements WebMvcConfigurer {
 當控制器方法返回的是數據而不是視圖名稱時，會使用 `@ResponseBody` 註解。
 
 1. `@ResponseBody`註解標註的控制器方法，會調用<font color="ff0000">`RequestResponseBodyMethodProcessor`</font>來處理方法的返回值。
-2. 返回值處理器，內部會調用 MessageConverter 來處理，不同的 MessageConverter 分別處理不同媒體類型的數據，也代表著這個web應用可以響應與處理的媒體數據。
-3.  返回值處理器會根據客戶端可以接受的媒體類型與當前web應用可以提供的媒體類型進行比對(內容協商流程)
-4. 最終決定出「合適」的 MessageConverter 對方法返回值進行處理。
+2. 不同的返回值處理器，內部處理邏輯都是不同的，有些會調用 MessageConverter，有些則是Converter，也可能都不調用，這取決於方法上的註解或者返回值類型來做判斷。
+3. 內容協商是依據客戶端可接受的MediaType與應用可提供的MediaType取交集並根據客戶端提供的權重決定出合適的 MediaType，內部是通過 MessageConverter做處理。
 
 ###### 響應JSON
 
@@ -1706,7 +1907,7 @@ SpringBoot支持以下第三方模板引擎，freemarker、groovy-templates、th
 + processDispatchResult 方法處理派發結果(頁面如何響應)
   + 如果目標方法執行後返回的ModelAndView不為null，rander() 進行頁面渲染
     + **遍歷所有視圖解析器，解析視圖名稱得到View對象，直到有一個成功解析為止，如果全部失敗，拋出異常**
-    + 調用View對象的render()方法，進行試圖的渲染
+    + 調用View對象的render()方法，進行視圖的渲染
 
 > 目標方法執行後的 ModelAndView 如果為 null ，那不會經過後續的視圖名稱解析出視圖，視圖渲染過程。因為在處理方法返回值時，由返回值處理器直接處理完畢了。
 >
@@ -1715,6 +1916,8 @@ SpringBoot支持以下第三方模板引擎，freemarker、groovy-templates、th
 > 視圖解析器作用是解析視圖名稱得到視圖對象，視圖對象作用為決定如何展示數據
 >
 > 數據會以各種不同方式展現，除了網頁已外，還能是各種檔案pdf、excel ... 。
+
+​	InternalResourceView 在渲染視圖時，會將隱含模型中的數據放入 request 請求域中，**其他視圖不一定會將隱含模型數據作相同處理**
 
 #### 控制器方法執行
 
