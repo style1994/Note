@@ -308,7 +308,41 @@ server.port=8888
   + SpringBoot所有的自動配置功能都在`spring-boot-autoconfigure`裡面
 + …
 
+##### 查看啟用的自動配置類
+
+如果你想要知道應用啟動時，有哪些自動配置類被加載/沒加載，那麼可以在 application.properties 文件開啟 debug 的 log 訊息：
+
+```properties
+debug=true
+```
+
+##### 關閉指定的自動配置類
+
+如果你不想讓某個自動配置類生效，那麼你可以通過 @SpringBootApplication 的 exclude 屬性，傳入自動配置類型
+
+``` java
+@SpringBootApplication(exclude={DataSourceAutoConfiguration.class})
+public class MyApplication {
+}
+```
+
+如果該類的不再類路徑底下，也可以通過 excludeName 屬性，它接受全類名字串方式。
+
+如果你頃向於使用 @EnableAutoConfiguration 而不是 @SpringBootApplication，exclued 和 excludeName 一樣也可以使用。
+
+最後，你還可以通過配置文件方式來選擇關閉自動配置類，通過 `spring.autoconfigure.exclude` 配置項。
+
+> 你也可以選擇性啟動某自動配置類，使用上面相同的方式
+
+
+
 ### 容器功能
+
+#### 依賴注入
+
+你可以使用任意 Spring Framework 註解來定義你的 Bean 及注入它們。
+
+> 當 Bean 只有一個有參構造器時，會自動注入有參構造器的參數依賴，可以省略 @Autowired
 
 #### 組件添加 
 
@@ -1511,19 +1545,59 @@ public boolean supportsParameter(MethodParameter parameter) {
 
 ##### 自定義參數類型
 
-SpringMvc支持將請求參數的封裝為自定義類型物件，在SpringBoot也是同樣的使用方式。只要參數名稱與自定義class屬性名稱相同，就會嘗試將請求參數轉換為對應的數據類型，並設置該屬性值。
+SpringMvc 支持將請求參數的級聯封裝為自定義類型物件。只要參數名稱與自定義物件的屬性名稱相同，就會**將請求參數轉換為對應屬性的數據類型**，並設置屬性值。
 
-###### 解析
+######  封裝過程解析
 
-+ 由 ServletModelAttributeMethodProcessor 參數值解析
+是使用 **ServletModelAttributeMethodProcessor 參數解析器來處理POJO的封裝**。如果方法參數不是簡單類型，就會使用該參數解析器。當然如果參數有標註註解，會由其他優先級較高那個參數解析器來處理
+
+>  參數解析器集合中會有**兩個** ServletModelAttributeMethodProcessor ，優先級較高那個是用來處理 @ModelAttribute 註解的，優先級較低那個則是用來處理POJO
+
+
+
++  是使用 **ServletModelAttributeMethodProcessor 參數解析器來處理POJO的封裝**
   + 決定控制器方法參數的基礎物件(是要創建還是沿用其他來源已有的)
-  + Web數據綁定器將請求參數綁定至基礎物件的屬性
-    + ConversionService 會負責請求參數的「數據類型轉換」與「數據格式」
+  + 通過**Web數據綁定器**將請求參數綁定至基礎物件的屬性
+    + Web 數據綁定器內部紀錄著完整的請求(request)
+    + 數據綁定器內的 **ConversionService** 內部有許多 **Converter** 負責對請求數據進行「類型轉換」和「數據格式化」工作。 
   + Web數據綁定器對基礎物件屬型值做數據驗證(方法參數有被 @Valid 標註才會進行數據校驗)
   + 數據校驗的結果封裝至 BindingResult 物件中。(一個自定義類型物件會對應一個 BindingResult 物件 )
+  
 + 為方法參數解析後的自定義類型物件
 
-###### 自定義類型轉換器
+  
+
+自定義類型對象封裝，核心源碼：
+
+``` java
+// 首先判斷決定基礎物件時，是否有異常
+if (bindingResult == null) {
+    // Bean property binding and validation;
+    // skipped in case of binding failure on construction.
+    // 創建web數據綁定器
+    WebDataBinder binder = binderFactory.createBinder(webRequest, attribute, name);
+    if (binder.getTarget() != null) {
+        if (!mavContainer.isBindingDisabled(name)) {
+            // 綁定請求參數
+            bindRequestParameters(binder, webRequest);
+        }
+        // 數據校驗
+        validateIfApplicable(binder, parameter);
+        if (binder.getBindingResult().hasErrors() && isBindExceptionRequired(binder, parameter)) {
+            throw new BindException(binder.getBindingResult());
+        }
+    }
+    // Value type adaptation, also covering java.util.Optional
+    if (!parameter.getParameterType().isInstance(attribute)) {
+        attribute = binder.convertIfNecessary(binder.getTarget(), parameter.getParameterType(), parameter);
+    }
+    bindingResult = binder.getBindingResult();
+}
+```
+
+
+
+###### 自定義 Converter
 
 1. 實現 Converter 接口，自定義自己的類型轉換器。
 2. 配置類實現 `WebMvcConfigurer` 接口，重寫`addFormatters`方法，註冊自己的轉換器
@@ -1726,14 +1800,30 @@ SpringBoot在處理方法返回值時，是通過各種 `HandlerMethodReturnValu
 
 > HttpMessageConverter 轉換是可以雙向了，接口內部定義了canRead和canWrite方法
 
-1. 判斷請求頭中是否有已經確定的媒體類型(MeidaType)。(需要攔截器)
-2. 獲取客戶端支持接收的媒體類型。。
-   1. 由內容協商管理器(`ContentNegotiationManager`)，它默認策略(`HeaderContentNegotiationStrategy`)是解析請求頭的Accept訊息
+1. 判斷響應頭中是否有已經確定的媒體類型(MeidaType)。
+
+   1. 如果 response中有明確指定媒體類型，就不進行內容協商
+
+2. 如果響應頭沒指定明確媒體類型，繼續後續內容協商操作
+
+3. 獲取客戶端支持的媒體類型。
+
+   獲取的方式是由內容協商管理器(`ContentNegotiationManager`)的內容協商策略決定。
+
+   1. 默認策略是請求頭策略(`HeaderContentNegotiationStrategy`)，解析請求頭的Accept訊息
    2. 內容協商策略可以通過 `WebMvcConfigurer` 的`configureContentNegotiation`方法增加。
-3. 遍歷所有`HttpMessageConverter`(消息轉換器)，將所有消息轉換器可以產出的媒體類型記錄下來，統計服務器可提供的媒體類型。
-4. 客戶端可接受的媒體類型與服務器可提供的媒體類型，兩者取其「交集」，決定雙方都能接受的媒體類型集合，最後**根據客戶端所提供的媒體類型權重排序，權重較高者優先採用**。
-5. 遍歷所有`HttpMessageConverter`(消息轉換器)，支持方法返回值/參數類型又支持最佳媒體類型，找出適合的消息轉換器。
-6. 使用消息轉換器處理解析。 
+
+4. 遍歷所有`HttpMessageConverter`(消息轉換器)，將所有消息轉換器可以產出的媒體類型記錄下來，統計服務器可提供的媒體類型。
+
+5. 客戶端可接受的媒體類型與服務器可提供的媒體類型，兩者取其「交集」，決定雙方都能接受的媒體類型集合
+
+6. 對雙方可接受的媒體類型集合進行排序， **根據客戶端所提供的媒體類型權重、其他資訊**排序，權重較高者優先。
+
+7. 找出最優媒體類型
+
+8. 遍歷所有`HttpMessageConverter`(消息轉換器)，支持方法返回值/參數類型又支持最佳媒體類型，找出適合的消息轉換器。
+
+9. 使用消息轉換器處理解析。 
 
 ###### 開啟瀏覽器參數方式內容協商功能
 
@@ -1831,7 +1921,7 @@ public class WebConfig implements WebMvcConfigurer {
 
 ###### 字定義內容協商策略
 
-SpringBoot在幫我們配置參數傳遞媒體類型內容協商策略時，默認只有JSON、XML兩種格式，如果自定義類型的媒體類型，使用SpringBoot配置的就不合適。所以也可以通過配置替換掉SpringBoot默認配置的幾種策略，SpringBoot默認策略如下：
+SpringBoot在默認配置參數傳遞媒體類型內容協商策略時，默認只有JSON、XML兩種格式，如果自定義類型的媒體類型，使用SpringBoot配置的就不合適。所以也可以通過配置替換掉SpringBoot默認配置的幾種策略，SpringBoot默認策略如下：
 
 + HeaderContentNegotiationStrategy：讀取Accept請求頭
 + ParameterContentNegotiationStrategy：當有配置請求參數內容策略時
@@ -1876,7 +1966,7 @@ public class WebConfig implements WebMvcConfigurer {
 2. 不同的返回值處理器，內部處理邏輯都是不同的，有些會調用 MessageConverter，有些則是Converter，也可能都不調用，這取決於方法上的註解或者返回值類型來做判斷。
 3. 內容協商是依據客戶端可接受的MediaType與應用可提供的MediaType取交集並根據客戶端提供的權重決定出合適的 MediaType，內部是通過 MessageConverter做處理。
 
-###### 響應JSON
+###### 響應 JSON
 
 想要讓 SpringBoot響應JSON，首先需要兩步驟
 
@@ -1887,6 +1977,21 @@ public class WebConfig implements WebMvcConfigurer {
   + 方法返回值宣告為 ResponseEntity，代表響應，可以設定響應頭、響應體、響應狀態碼。
 
 `MappingJackson2HttpMessageConverter` 可以處理 JSON 的 MimeType
+
+###### 響應 XML
+
++ 引入 XML 依賴
+
+  ``` xml
+  <dependency>
+      <groupId>com.fasterxml.jackson.dataformat</groupId>
+      <artifactId>jackson-dataformat-xml</artifactId>
+  </dependency>
+  ```
+
++ @ResponseBody 或 方法返回 ResponseEntity 類型數據，都會讓其調用相應的MessageConverter處理
+
+> 轉換為什麼格式，取決於客戶端需要什麼格式的數據。導入依賴只是讓我們應用可以產出的格式多個一個XML而已。
 
 #### 視圖解析
 
