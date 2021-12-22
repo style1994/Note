@@ -69,7 +69,7 @@ SpringBoot + SpringCloud
 + 流量治理
 + …
 
-### 如何學習 SpringBoot
+### 學習 SpringBoot
 
 #### 官方文檔架構
 
@@ -143,9 +143,9 @@ The reference documentation has the following appendices:
     
     ```
 
-+ 編寫 SpringBoot 主程序
++ 編寫 SpringBoot 應用 
 
-  這裡認識的第一個 SpringBoot 註解：`@SpringBootApplication`，作用是標註該類為SpringBoot應用
+  這裡認識的第一個 SpringBoot 註解：`@SpringBootApplication`，作用是標註該類為 SpringBoot 應用的起點
 
   ```java
   /**
@@ -160,15 +160,16 @@ The reference documentation has the following appendices:
   }
   ```
 
+  Spring Boot 應用不應該使用「默認」包，始終確保它在一個包下，
+
 + 編寫Controller 處理請求
 
   ```java
   /*
-   * 方法返回值要放入響應體中可以使用 @ResponseBody 註解修飾方法
-   * 如果 Controller 下所有方法都是將返回值加入響應體中
-   * 可以將 @RequestBody 註解使用在類上，可以達到同樣的效果
+   * 方法返回值要放入響應體中可以在方法上使用 @ResponseBody
+   * 如果所有方法都是將返回值加入響應體中，可以將 @RequestBody 註解使用在類上
    * 而 springboot 新註解 @RestController，就是 @Controller 和 @ResponseBody 合體
-   * 在類上使用 @RestController 可以直接取代上面兩個註解
+   * 在類上使用 @RestController 可以直接取代兩個註解
    */
   
   
@@ -183,16 +184,14 @@ The reference documentation has the following appendices:
       }
   }
   ```
-
-  > 控制器必須和主程序在同層或是子層，在外層主程序的組件掃描會掃不到
-
+  
 + 運行 main 方法測試(啟動SpringBoot)
 
 #### 整合配置
 
-SpringBoot誕生就是為了整合整個Spring生態圈，SpringBoot將所有配置都抽取在一個`Application.properties`配置文件中，裡面可以配置所有使用到的Spring框架，包含 Tomcat。而那些
+SpringBoot 誕生就是為了整合 Spring 生態圈，SpringBoot 將所有配置都抽取在一個`application.properties` 配置文件中，可以配置所有使用到的 Spring 生態圈技術，也包含其他第三方框架。
 
-可以在官方文檔的 [Application Properties](https://docs.spring.io/spring-boot/docs/current/reference/html/appendix-application-properties.html#common-application-properties)  找到 SpringBoot可使用的所有配置。
+可以在官方文檔的 [Application Properties](https://docs.spring.io/spring-boot/docs/current/reference/html/appendix-application-properties.html#common-application-properties)  找到 SpringBoot 可使用的所有配置。
 
 例如：修改 Tomcat 的端口號
 
@@ -2337,34 +2336,32 @@ public String upload(@RequestPart("headImg") MultipartFile userImage, List<Multi
 
 #### 異常處理
 
-##### 錯誤處理
-
-###### SpringBoot默認規則：
+##### SpringBoot默認規則：
 
 + 默認情況下，SpringBoot提供 `/error` 處理所有錯誤映射
-+ 對於機器客戶端，它會生成JSON響應，其中包含錯誤，HTTP狀態和異常消息的詳細訊息。對於瀏覽器，響應一個「whitelabel」錯誤視圖，以HTML格式呈現相同數據。
-+ **要對whitelabel進行自定義，註冊`View` bean id為 `error`**
-+ 要完全替換默認行為，可以實現 `ErrorController` 並註冊該類型的 Bean 定義，或添加 `ErrorAttributes` 類型組件以使用現有機制替換其內容
++ 對於機器客戶端(如：postman)，它會生成JSON響應，包含錯誤，HTTP狀態和異常消息的詳細訊息。
++ 對於瀏覽器，響應一個「whitelabel」錯誤視圖，稱為「白頁」，以HTML格式呈現相同數據。
++ **要對whitelabel進行自定義，在容器註冊`View` 且bean的id為 `error`**
++ 要完全替換默認行為，可以實現 `ErrorController` 並在容器註冊該 Bean，或添加 `ErrorAttributes` 類型組件以使用現有機制替換其內容
 
-###### SpringBoot提供的錯誤處理機制：
+##### SpringBoot提供的錯誤處理機制：
 
-+ 自定義錯誤頁面，根據響應狀態碼跳轉到對應錯誤頁。
-  + 錯誤頁面需要放到靜態/動態資源目錄下的`error`資料夾。例如：error/404.html、error/5xx.html(以5開頭的響應狀態碼都使用該頁)
++ 自定義錯誤頁面，根據響應狀態碼跳轉到對應錯誤頁。(使用`DefaultErrorViewResolver`的行為)
 + `@ControllerAdvice` + `@ExceptionHandler` 註解定義**全局**異常處理方法
 + 在各自的 Controller + `@ExceptionHandler` 註解定義**區域**異常處理方法
 + 實現 `HandlerExceptionResolver` 接口處理異常。**可通過 @Order 註解調整異常解析器的優先級**。
 
-###### 異常處理底層組件功能分析
+##### 異常處理底層組件功能分析
 
-SpringBoot 錯誤自動配置類為 ：`ErrorMvcAutoConfiguration`。裡面自動配置了以下組件：
+SpringBoot 錯誤自動配置類為 ：**`ErrorMvcAutoConfiguration`**。裡面自動配置了以下組件：
 
-+ `DefaultErrorAttribute` 組件 (`id=errorAttributes`)
++ `DefaultErrorAttribute` 組件。(`id = errorAttributes`)
 
-  定義錯誤響應中包含哪些內容
+  定義錯誤響應中包含哪些內容，決定模板頁面或JSON響應方式可以取得的數據
 
-+ `BasicErrorController` 組件 (`id=basicErrorController`)
++ `BasicErrorController` 組件。(`id = basicErrorController`)
 
-  + SpringBoot默認處理 /error 路徑的請求的控制器類
+  + SpringBoot默認處理 /error 路徑的請求的控制器類，
 
     ``` java
     @Controller
@@ -2378,15 +2375,20 @@ SpringBoot 錯誤自動配置類為 ：`ErrorMvcAutoConfiguration`。裡面自�
 
   + 客戶端為瀏覽器時響應白頁，其他都響應JSON
 
-+ `View` 組件(`id=error`)，默認響應錯誤頁
++ `View` 組件(`id=error`)，默認響應錯誤頁(響應給瀏覽器的白頁)
 
 + `BeanNameViewResolver` 組件，依視圖名作為組件的id去容器找view對象。為了找上一項配置的 `View`。
 
 + `DefaultErrorViewResolver` 組件 (`id=conventionErrorViewResolver`)
 
   如果發生錯誤，會以HTTP的狀態碼作為視圖地址(viewName)，找到真正的頁面。例如：error/4xx.html、error/5xx.html
+  
+  + 錯誤頁面需要放到靜態/動態資源目錄下的`error`資料夾。例如：error/404.html、error/5xx.html(以5開頭的響應狀態碼都使用該頁)。
+  + 先查找動態資料夾(template)下 /error/xxx 的模板頁面 xxx 為具體錯誤代碼
+  + 如果找不到，查找 /error/4xx 或 /error/5xx 的模板頁面
+  + 如果找不到，改去靜態資料夾(static)尋找，查找順序與動態資料夾一致
 
-###### 異常處理步驟流程
+##### 異常處理步驟流程
 
 1. 執行目標方法，方法執行期間有任何異常，都會被 catch 保存到 dispatchEcxeption區域變數，且會將當前請求標註為「已完成」，將在頁面渲染流程使用。
 
@@ -2402,7 +2404,7 @@ SpringBoot 錯誤自動配置類為 ：`ErrorMvcAutoConfiguration`。裡面自�
 
          1. DefaultErrorAttributes(**<font color="ff0000">「必定執行」，順位第一，且返回null值，執行完會交由後續解析器繼續解析</font>**)
 
-            將發生的異常保存到請求域中，key：DefaultErrorAttributes全類名 + .ERROR
+            作用就是將發生的異常保存到請求域中，key：DefaultErrorAttributes全類名 + .ERROR
 
          2. HandlerExceptionResolverComposite(三個異常解析器的組合)
 
@@ -2418,7 +2420,7 @@ SpringBoot 錯誤自動配置類為 ：`ErrorMvcAutoConfiguration`。裡面自�
 
                專門用來處理Spring的異常
 
-      2. 異常解析器**有**解析出ModelAndView，做一些處理，返回試圖後接續視圖解析流程
+      2. 異常解析器**有**解析出ModelAndView，做一些處理，返回視圖後接續視圖解析流程
 
          1. 判斷視圖與模型是否為空，為空返回null
          2. 判斷視圖是否為空，為空設定視圖名
@@ -2426,14 +2428,16 @@ SpringBoot 錯誤自動配置類為 ：`ErrorMvcAutoConfiguration`。裡面自�
 
       3. 異常解析器**沒有**解析出ModelAndView，代表沒人處理該異常，則拋出當前異常，頁面渲染失敗，**SpringBoot底層再會次發出/error請求，由`BasicErrorController`處理該請求。**
 
-以下說明 BasicErrorController 的錯誤解析流程：
+BasicErrorController 的錯誤解析流程：
 
-+ 如果沒有人可以處理異常，程序中止，SpringBoot底層會轉發(forward)/error請求，交由BasicErrorController 處理
-+ 使用解析錯誤視圖解析器，遍歷所有的 `ErrorViewResolver`，解析出錯誤視圖，默認使用 DefaultErrorViewResolver
++ 如果沒有HandlerExceptionResolver可以處理異常，程序中止，SpringBoot底層會轉發(forward)/error(默認值)請求，交由 **BasicErrorController** 處理
+  + 轉發地址如果沒有在配置文件設定 server.error.path，默認值使用 **/error**
+
++ BasicErrorController 使用解析錯誤視圖解析器，遍歷所有的 `ErrorViewResolver`，解析出錯誤視圖，默認使用 DefaultErrorViewResolver
   + 嘗試查找是否有對應的「具體」錯誤頁面。例如：error/404.html、error/500.html。
   + 嘗試查找是否有對應的「模糊」錯誤頁面。例如：error/4xx.html、error/5xx.html。
-+ 如果錯誤試圖解析器都沒解析出，則使用視圖名稱為error的視圖(白頁)，在自動配置就加入至ioc容器中，id=error，會使用BeanNameViewResolver判斷出使用該error視圖
-+ 接續後續的目標方s法執行完後的流程
++ 如果錯誤試圖解析器都沒解析出，那使用bean id = **error** 的視圖(白頁)，該視圖在自動配置就加入至容器中。會使用BeanNameViewResolver判斷出使用該error視圖
++ 接續後續的目標方法執行完後的流程
 
 #### Web原生組件注入(Servlet、Filter、Listener)
 

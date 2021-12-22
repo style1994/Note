@@ -10,18 +10,19 @@
 
 + 基本屬性：
   + id：Bean 實例在 Spring 容器的唯一標識。(不能重複)
+  + name：Bean 實例在 Spring 容器的別名，別名可以多個(使用逗號分開)
   + class：Bean 的完整類名。
 
 ##### 範圍配置(scope)
 
 scope：指定對象作用的範圍。request、session、globalsession 需要在外部環境下配置。
 
-| 取值範圍       | 說明                                                         |
-| -------------- | ------------------------------------------------------------ |
-| **singleton**  | **默認值，單例。**                                           |
-| **prototype**  | **多例的。**                                                 |
-| request        | WEB項目中，每次 HTTP 請求，Spring 創建一個 Bean 對象，將該對象存入到 request 域中。<br />該對象在這個 HTTP 請求結束後被銷毀。 |
-| session        | WEB項目中，每個 HTTP SESSION，Spring 創建一個 Bean 對象，將該對象存入到 session 域中。<br />該對象在這個HTTP SESSION 結束後被銷毀。 |
+| 取值範圍       | 說明                                                                                                                                                                                                                                                                                                            |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **singleton**  | **默認值，單例。**                                                                                                                                                                                                                                                                                              |
+| **prototype**  | **多例的。**                                                                                                                                                                                                                                                                                                    |
+| request        | WEB項目中，每次 HTTP 請求，Spring 創建一個 Bean 對象，將該對象存入到 request 域中。<br />該對象在這個 HTTP 請求結束後被銷毀。                                                                                                                                                                                   |
+| session        | WEB項目中，每個 HTTP SESSION，Spring 創建一個 Bean 對象，將該對象存入到 session 域中。<br />該對象在這個HTTP SESSION 結束後被銷毀。                                                                                                                                                                             |
 | global session | WEB項目中，僅僅在基於 portlet 的 web 應用中才有意義。<br />Portlet 規範定義了全域性 Session 的概念，它被所有構成某個 portlet web 應用的各種不同的portlet 所共享。在 global session 作用域中定義的 bean 被限定於全域性 portlet Session的生命週期範圍內。如果沒有 Portlet 環境，那麼 globalsession 相當於 session |
 
 scope 和 prototype 區別：
@@ -30,14 +31,14 @@ scope 和 prototype 區別：
 | -------- | ---------------------------------- | ---------------------------------------- |
 | 對象個數 | 1個                                | 多個                                     |
 | 對象創建 | 應用加載，創建容器時，對象就被創建 | 程序獲取對象時，創建對象                 |
-| 對象運行 | 只要容器還存在，對象就存在         | 對象還有被引用(使用)，對象就存在         |
+| 對象運行 | 容器未被關閉，對象就存在           | 對象還有被引用(使用)，對象就存在         |
 | 對象銷毀 | 應用關閉，銷毀容器時，對象被銷毀   | 對象沒有被引用一段時間後，被Java的gc回收 |
 
 ##### 生命週期方法配置
 
-`init-method` 指定類中初始化方法名稱，當對象被創建時呼叫。
+`init-method` 指定類中初始化方法名稱，當對象被創建後(配置完依賴後)時呼叫。
 
-`destroy-method` 指定類中銷毀方法名稱，當對象被銷毀時呼叫。
+`destroy-method` 指定類中銷毀方法名稱，當對象被銷毀前呼叫。
 
 ```xml
 <bean id="userDao" class="org.learning.dao.impl.UserDaoImpl" scope="singleton" 
@@ -48,6 +49,11 @@ scope 和 prototype 區別：
 ##### bean 實例化的三種方式
 
 1. 無參構造方法實例化(默認)
+
+   ``` xml
+   <!-- 參構造器配置 -->
+   <bean id="userDao" class="org.learning.dao.UserDao"/>
+   ```
 
 2. 工廠靜態方法實例化
 
@@ -72,24 +78,80 @@ scope 和 prototype 區別：
 
 #### 依賴注入
 
-依賴注入 ( Dependency Injection ) 是`Spring`框架核心`IOC(控制反轉)`的具體實現。編寫程序時，通過`IOC`，把對象創建交給`Spring`，但是代碼不可能沒有依賴，`IOC`解偶只是降低它們的依賴關係，但不會完全消除。例如：`Service`層仍會調用`Dao`層的方法。
+IOC (Inversion of Control) 控制反轉是一種思想，而 DI 是實現該思想的技術之一。
 
-這種業務層與持久層的依賴關係，在使用`Spring`之後，就讓`Spring`來替我們維護。`Spring`框架會將持久層對象傳入至業務層，而不是我們自己去獲取。
+控制反轉，指的是將本來由程式本身自己創建所依賴對象的這種自主行為，轉變為被動從外部接受所依賴對象，自己不參與依賴對象的創建。有助於改善程式之間的耦合關係。
+
+依賴注入 (Dependency Injection) 是 `Spring` 框架核心 `IOC(控制反轉)` 的具體實現。IOC思想，是把對象創建權交由 Spring 框架。
+
+代碼不可能沒有依賴，解偶只是降低它們的依賴關係，但不會完全消除。例如：`Service` 層仍會調用 `Dao` 層的方法來訪問數據庫。
+
+這種業務層與持久層的依賴關係，在使用 `Spring` 之後，轉變由 `Spring` 來替我們維護。`Spring`框架會為業務層注入所需的持久層，而不是持久層自己去獲取。
 
 ##### Bean 的注入方式
 
-###### 構造方法
+ Spring 提供依賴注入的方式為兩種
 
-`bean` 標籤內可以宣告 `constructor-arg`子標籤，用於指定在呼叫構造方法時，傳入的參數。當沒有指定`constructor-arg`子標籤，默認呼叫無參構造方法創建`bean`對象。`constructor-arg`子標籤有以下屬性：
++ 構造器注入：強調是一種**必要**依賴的關係，好處是可以將所依賴的對象設為 final。Spring 官方推薦大部分情況下請使用構造器注入依賴。
++ setter 注入：強調依賴是**可選**的，應該僅用於對有默認值的依賴進行配置。否則，要在使用依賴前判斷其是否為 null。
 
-1. `name`：指定構造方法的參數名
-2. `ref`：指定容器中的`bean`對象，將該對象作為構造方法的參數，值為`bean id`。
-3. `value`：指定一個值，將該值作為構造方法的參數。
+###### 構造器注入
+
+`bean` 標籤內定義 `constructor-arg` 子標籤，用配置 Spring 在創建 Bean 時所呼叫的無參構造器，所傳入的參數。當沒有指定`constructor-arg`子標籤，則呼叫無參構造方法創建 Bean 對象。
+
+`constructor-arg`子標籤有以下屬性：
+
+1. `name`：指定構造方法中的參數名稱。
+
+2. `ref`：指定容器中其他 Bean 對象，將其作為構造方法的參數，值為 `bean id`。
+
+   > 定義 Bean 對象的書寫順序並不等於創建的順序，Spring 框架會自動判斷哪些 Bean 要先創建，那些會晚創建。正常情況下，所依賴的 Bean 會先創建。
+
+3. `value`：指定一個值，將該值作為構造方法的參數。(ref 和 value 擇一)
+
+4. `type`：指定構造函數參數的類型
+
+5. `index`：指定構造函數參數的索引。(0開始)
+
+假設參數間沒有繼承關係，且在沒有歧意的情況下，`constructor-arg` 標籤僅需指定 ref 屬性。並不需要指定構造參數的類型或索引。
+
+``` xml
+<!-- 構造方法注入 -->
+<bean id="userDao" class="org.learning.dao.UserDao"/>
+<bean id="memberDao" class="org.learning.dao.MemberDao">
+<bean id="userService" class="org.learning.service.impl.UserServiceImpl">
+	<constructor-arg ref="userDao"/>
+    <constructor-arg ref="memberDao"/>
+</bean>
+```
+
+當使用簡單類型時，Spring 無法確定值的類型，因此在沒有幫助下無法案類型來自動匹配。 `constructor-arg` 標籤 type 屬性來確定 value 屬性是屬於哪種基本類型。例如：Spring 無法透過字串 1 判斷應該是 int 還是 long 又或者是 String。
+
+``` xml
+<!-- 構造方法注入 -->
+<bean id="userService" class="org.learning.service.impl.UserServiceImpl">
+	<constructor-arg type="int" value="7500000"/>
+    <constructor-arg type="java.lang.String" value="42"/>
+</bean>
+```
+
+當構造函數有兩個相同類型的的參數，Spring 無法判斷時，使用  `constructor-arg` 標籤 index 屬性來正確匹配注入的依賴。這還可以解決多個基本類型的歧意，
+
+``` xml
+<!-- 構造方法注入 -->
+<bean id="userService" class="org.learning.service.impl.UserServiceImpl">
+	<constructor-arg index="0" value="7500000"/>
+    <constructor-arg index="1" value="42"/>
+</bean>
+```
+
+還可以使用構造函數的參數名稱來消除歧意。
 
 ```xml
 <!-- 構造方法注入 -->
+<bean id="userDao" class="org.learning.dao.UserDao"/>
 <bean id="userService" class="org.learning.service.impl.UserServiceImpl">
-<constructor-arg name="userDao" ref="userDao"></constructor-arg>
+	<constructor-arg name="userDao" ref="userDao"></constructor-arg>
 </bean>
 ```
 
@@ -97,17 +159,10 @@ scope 和 prototype 區別：
 public class UserServiceImpl implements UserService {
     private UserDao userDao;
 
-    public UserServiceImpl() {
-    }
-
     public UserServiceImpl(UserDao userDao) {
         this.userDao = userDao;
     }
-
-    public void setUserDao(UserDao userDao) {
-        this.userDao = userDao;
-    }
-
+    
     @Override
     public void save() {
         System.out.println("service call");
@@ -116,7 +171,34 @@ public class UserServiceImpl implements UserService {
 }
 ```
 
-###### Set方法
+要啟用該功能，必須在啟用調試標誌的情況下編譯代碼。以便 Spring 可以從構造函數中查找參數名稱。如果你不能或不想使用 debug 標誌編譯代碼，可以使用 @ConstructorProperties JDK 註解，顯示命名構造函數參數。如下範例
+
+``` java
+package examples;
+
+public class ExampleBean {
+
+    // Fields omitted
+
+    @ConstructorProperties({"years", "ultimateAnswer"})
+    public ExampleBean(int years, String ultimateAnswer) {
+        this.years = years;
+        this.ultimateAnswer = ultimateAnswer;
+    }
+}
+```
+
+###### Setter 方法注入
+
+基於 setter 的依賴注入是通過調用無參構造器或無參靜態工廠方法創建 Bean 之後，在調用 Bean 的 setter 方法來完成。
+
+你可以混合使用基於構造器和基於 setter 的 DI。**構造器注入用於強制性依賴**；**setter 注入用於可選依賴**。這是一個非常好的經驗法則。
+
+> 在 setter 方法上使用 @Require 註解，可讓該屬性 setter 注入變為必須的依賴
+
+Spring 團隊推薦使用構造函數注入。順便說明一下，大量的構造函數變量是一種不好的代碼味道，這意味著該類可能承擔了太多職責，應該對其進行重構以更好解決分離關注點。
+
+Setter 注入應僅用於**可以在類中分配合理默認值的可選依賴項**。否則，必須在代碼使用依賴項的任何地方進行非空檢查。
 
 `bean` 標籤內可以宣告`property`子標籤，`property`代表`bean`類的成員變量，`property`標籤有以下屬性：
 
@@ -165,6 +247,22 @@ xmlns:p="http://www.springframework.org/schema/p"
 
 > 在實際開發中還是推薦set方法注入，當需要注入的對象很多時，p命名空間注入的書寫方式會過於冗長，閱讀不便。
 
+##### 循環依賴
+
+**如果主要使用構造器注入，則可能會遇到無法解決的循環依賴**。
+
+例如：A 類通過構造函數注入 B 類，而 B 類通過構造函數注入 A 類。以上述情況配置 Bean，Spring IOC 容器會在運行時檢測到此循環依賴錯誤，並拋出 BeanCurrentlyInCreateionException。
+
+一種可能的解決方案是編輯某些類的源代碼，將循環依賴注入改為基於 setter。換句話說，儘管不建議這樣做，但是你可以使用 setter 注入循環依賴關係。
+
+A 類和 B 類之間的循環依賴關係迫使其中一個 Bean 在完全初始化之前被注入另一個 Bean(雞和蛋)。
+
+通常你可以信任 Spring 做正確的事。它容器加載時檢測配置問題，例如對不存在的 Bean 的引用和循環依賴。在實際創建 Bean 時，Spring 設置屬性並盡可能晚的解決依賴關係。這意味著如果創建該對象或其依賴項之一時出現問題，則正確加載 Sprign 容器以後會在你請求對象時生成異常。
+
+這種淺在地延遲可見性是為什麼默認情況下，ApplicationContext 會創建單例 Bean，在容器啟動時，它們就已經被創建，你會在啟動容器時就發現配置問題，而不是之後。你仍然可以修改此默認行為，以便單例 Bean 延遲初始化，而不是預先實例化。
+
+
+
 ##### Bean的依賴注入的數據類型
 
 除了引用`bean`對象注入之外，普通數據類型、集合等都可以在容器中進行注入。
@@ -204,8 +302,13 @@ xmlns:p="http://www.springframework.org/schema/p"
    5. Set
 
       `set`標籤為`property`下的子標籤，通過 `set` 標籤為`bean`中數據類型為 `set ` 的成員變量賦值。
-
-   > 集合中元素如果想包含普通數據類型使用 `value `標籤表示，如果想包含容器中`bean`對象使用 `ref`，還可以內嵌其他標籤，因為集合中可以包含各種類型的數據。
+      
+      > 集合中元素如果想包含普通數據類型使用 `value `標籤表示，如果想包含容器中`bean`對象使用 `ref`，還可以內嵌其他標籤，因為集合中可以包含各種類型的數據。
+      >
+      > Map 的鍵或值可以是以下任意屬性：
+      >
+      > bean | ref | idref | list | set | map | props | value | null
+   
 
 要示範三種類型的不同注入方式，首先準備一個`bean`包含不同需注入數據類型。
 
@@ -240,7 +343,6 @@ public class Hobby {
         <list>
             <value>Amy</value>
             <value>Peter</value>
-
         </list>
     </property>
     <!-- map -->
@@ -297,6 +399,181 @@ public class Hobby {
     <property name="describe" value="play ball"></property>
 </bean>
 ```
+
+##### 複合屬姓名稱
+
+設置 Bean 屬性時，可以使用複合屬性或嵌套屬性名稱，只要路徑中除最終屬性名稱以外的所有組件不是 null 即可。參考以下範例
+
+``` xml
+<bean id="something" class="things.ThingOne">
+    <property name="fred.bob.sammy" value="123" />
+</bean>
+```
+
+something Bean 具有 fred 屬性，該屬性具有 bob 屬性，該屬性具有 sammy 屬性，最終設置 sammy 值為 123。為了使上面的配置起作用，在構造 something 之後，fred、bob 一定不能為 null。否則將拋出 NullPointerException
+
+##### 懶初始化 Bean
+
+默認情況下，作為初始化過程的一部分，ApplicationContext 實現會急於創建和配置所有 Singleton Bean。通常，這種預初始化是可取的，因為與數小時甚至數天後相比，會立刻發現配置中的錯誤。如果不希望使用此行為，則可以通過將 Bean 定義標記為延遲初始化來防止單例 Bean 的預初始化。
+
+延遲初始化的 Bean 告訴 IOC 容器在首次請求時創建，而不是在容器啟動時。
+
+``` xml
+<bean id="lazy" class="com.something.ExpensiveToCreateBean" lazy-init="true"/>
+<bean name="not.lazy" class="com.something.AnotherBean"/>
+```
+
+但是，當延遲初始化 Bean 是未延遲初始化的單例 Bean 的依賴項時，ApplicationContext 將在啟動時創建延遲初始化 Bean，因為它必須滿足單例 Bean 的依賴關係。
+
+你還可以使用 `<bean/>` 元素上的 default-lazy-init 屬性在容器級別控制延遲初始化，參考以下範例
+
+``` xml
+<beans default-lazy-init="true">
+    <!-- no beans will be pre-instantiated... -->
+</beans>
+```
+
+##### 查找方法注入
+
+在大多數應用場景中，容器大多數的 Bean 是單例。當單例 Bean 需要與另一個單例 Bean 協作或非單例 Bean 需要另一個非單例 Bean 協作時，通常可以通過將一個 Bean 定義為另一個 Bean 的屬性來處理依賴性。
+
+當 Bean 的生命週期不同時會出現問題。假設單例 Bean A 需要使用非單例 Bean B，也許在 A 的每個方法調用上都使用。容器僅創建一次單例 Bean A，因此只有一次機會來設置依賴。但是無法在 A 每次需要 B 時，為 A 提供一個新的 B。
+
+一個比較粗魯的方法是放棄某些控制反轉。你可以通過讓 Bean  A 實現 `ApplicationContextAware` 接口，來讓 A 知道容器的存在，並在每次需要 B 時，調用容器取得新的 B 實例。參考以下範例：
+
+``` java
+public class CommandManager implements ApplicationContextAware {
+
+    private ApplicationContext applicationContext;
+
+    public Object process(Map commandState) {
+        // grab a new instance of the appropriate Command
+        Command command = createCommand();
+        // set the state on the (hopefully brand new) Command instance
+        command.setState(commandState);
+        return command.execute();
+    }
+
+    protected Command createCommand() {
+        // notice the Spring API dependency!
+        return this.applicationContext.getBean("command", Command.class);
+    }
+
+    public void setApplicationContext(
+            ApplicationContext applicationContext) throws BeansException {
+        this.applicationContext = applicationContext;
+    }
+}
+
+```
+
+前面的內容是不理想的，因為業務代碼知道並耦合到 Spring 框架。下面將介紹第二種解決方式：查找方法注入，它是 Spring IoC 容器的一項高級功能，讓你可乾淨俐落的解決上述問題
+
+查找方法注入是容器重寫容器所管理的 Bean 中方法，使該方法返回容器中另一個指定名稱的 Bean。
+
+Spring 框架通過 CGLIB 庫生成字節碼來動態生成覆蓋該方法的子類來實現該查找方法注入功能。
+
+CGLIB 是通過繼承方式來實現動態代理功能，所以需要確保以下事項
+
++ 需要使用查找方法的類不可以為 final
++ 要覆蓋的方法也不可以為 final
+
+對具有 abstract 方法的類進行單元測試需要您自己對該類繼承並提供抽象方法的實現，組件掃描也需要具體的方法，這需要具體的類別。
+
+另一個關鍵限制，查找方法不適用於工廠方法，尤其不適用配置類中的 @Bean 方法，因為在這種情況下，容器不負責創建實例，因此在無法創建運行時生成的子類。
+
+對於前面代碼中的 CommandManager 類，Spring 容器將動態覆蓋 createCommand() 方法的實現。CommandManager 類中沒有任何 Spring 依賴項。
+
+``` java
+public abstract class CommandManager {
+
+    public Object process(Object commandState) {
+        // grab a new instance of the appropriate Command interface
+        Command command = createCommand();
+        // set the state on the (hopefully brand new) Command instance
+        command.setState(commandState);
+        return command.execute();
+    }
+
+    // okay... but where is the implementation of this method?
+    protected abstract Command createCommand();
+}
+
+```
+
+在包含要注入查找方法的類中，要注入方法需要以下形式的簽名：
+
+``` text
+<public|protected> [abstract] <return-type> theMethodName(no-arguments);
+```
+
+如果方法是 abstract，則動態生成的子類將實現該方法。否則，動態生成的子類將覆蓋原始類中定義的具體方法。查找方法注入參考以下配置
+
+```xml
+<!-- a stateful bean deployed as a prototype (non-singleton) -->
+<bean id="myCommand" class="fiona.apple.AsyncCommand" scope="prototype">
+    <!-- inject dependencies here as required -->
+</bean>
+
+<!-- commandProcessor uses statefulCommandHelper -->
+<bean id="commandManager" class="fiona.apple.CommandManager">
+    <lookup-method name="createCommand" bean="myCommand"/>
+</bean>
+
+```
+
+每當需要 myCommand 的新實例時，標示為 commandManager 的 Bean 就會調用自己的 createCommand() 方法。如果確實需要 myCommand Bean 作為原型，則必須小心。如果它是 Singleton，則每次相同實例。
+
+另外，在基於註解的配置方式中，你可以通過 @Lookup 註解聲明一個查找方法
+
+``` java
+public abstract class CommandManager {
+
+    public Object process(Object commandState) {
+        Command command = createCommand();
+        command.setState(commandState);
+        return command.execute();
+    }
+
+    @Lookup("myCommand")
+    protected abstract Command createCommand();
+}
+
+```
+
+更常用的是，你可以依賴餘查找方法聲明的返回值類型來解析，不直接指定目標 Bean 的名稱
+
+``` java
+public abstract class CommandManager {
+
+    public Object process(Object commandState) {
+        MyCommand command = createCommand();
+        command.setState(commandState);
+        return command.execute();
+    }
+
+    @Lookup
+    protected abstract MyCommand createCommand();
+}
+
+```
+
+ 請注意，註解方式宣告查找方法應該有具體的實現，以使它們與 Spring 的組件掃描規則相容，在默認情況下抽象類將被忽略，該限制不適用於顯示註冊或顯示導入的類
+
+#### Bean 作用域
+
+創建 Bean 時，你不僅可以控制要插入 bean 的依賴，還可以控制所創建 Bean 的範圍。Spring 框架支持六個範圍，其中幾個只有在具有網路感知 ApplicationContext 時才有用。你也可以自訂範圍
+
+| Scope       | 描述                                                                                                                                                |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| singleton   | 默認值。將每個 Spring IOC 容器中的 Bean 限定為單例。                                                                                                |
+| prototype   | Spring IOC 容器中允許任意數量的實例                                                                                                                 |
+| request     | Bean 存在於單個 HTTP 請求的生命周期中，也就是說對於每次 HTTP 請求，容器都會創建一個新的 Bean 實例。僅在可感知網路的 ApplicationContext 上下文中有效 |
+| session     | Bean 存在於單個 HTTP Session 的生命週期中。僅在可感知網路的 ApplicationContext 上下文中有效                                                         |
+| application | Bean 存在於 ServletContext 的生命週期中。僅在可感知網路的 ApplicationContext 上下中有效                                                             |
+| websocket   | Bean 存在於 WebSocket 的生命週期。僅在可感知網路的 ApplicationContext 上下中有效                                                                    |
+
+
 
 #### 引入其他配置文件
 
@@ -418,19 +695,19 @@ public class Hobby {
 
 `Spring` 原始註解主要是替代`bean`標籤配置
 
-| 註解           | 說明                                                         |
-| -------------- | ------------------------------------------------------------ |
-| @Component     | 使用在類上用於實例化Bean                                     |
-| @Controller    | 使用在Controller層類上用於實例化Bean                         |
-| @Service       | 使用在Service層類上用於實例化Bean                            |
-| @Repository    | 使用在Dao層上用於實例化Bean                                  |
-| @Autowired     | 根據類型進行依賴注入。**可以在構造器、方法、參數、成員變量上使用。** |
-| @Qualifier     | 必須結合@Autowired一起使用，用於根據`bean id`進行依賴注入    |
+| 註解           | 說明                                                                                                                           |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| @Component     | 使用在類上用於實例化Bean                                                                                                       |
+| @Controller    | 使用在Controller層類上用於實例化Bean                                                                                           |
+| @Service       | 使用在Service層類上用於實例化Bean                                                                                              |
+| @Repository    | 使用在Dao層上用於實例化Bean                                                                                                    |
+| @Autowired     | 根據類型進行依賴注入。**可以在構造器、方法、參數、成員變量上使用。**                                                           |
+| @Qualifier     | 必須結合@Autowired一起使用，用於根據`bean id`進行依賴注入                                                                      |
 | @Resource      | 等於@Autowired + @Qualifier，根據bean id進行注入。改善@Qualifier還須搭配@Autowired一起使用問題。**可以在成員變量、方法上使用** |
-| @Value         | 使用在成員變量上，注入普通屬性                               |
-| @Scope         | 標註Bean的作用範圍                                           |
-| @PostConstruct | 使用在方法上，指定Bean的初始化方法，構造方法執行完後調用     |
-| @PreDestroy    | 使用在方法上，指定Bean的銷毀方法，在Bean被銷毀前調用         |
+| @Value         | 使用在成員變量上，注入普通屬性                                                                                                 |
+| @Scope         | 標註Bean的作用範圍                                                                                                             |
+| @PostConstruct | 使用在方法上，指定Bean的初始化方法，構造方法執行完後調用                                                                       |
+| @PreDestroy    | 使用在方法上，指定Bean的銷毀方法，在Bean被銷毀前調用                                                                           |
 
 > @Component、@Controller、@Service、@Repository 這四個註解功能都是告訴 Spring 該類為 bean。使用後三者能詳細區分出是分層架構中哪一層的 bean，幫助閱讀程式碼。如果無法歸類請使用@Component。
 
@@ -563,13 +840,13 @@ public class UserServiceImpl implements UserService {
 
 這時就由新註解來替代這些 xml 配置
 
-| 註解            | 說明                                                         |
-| --------------- | ------------------------------------------------------------ |
+| 註解            | 說明                                                                                                         |
+| --------------- | ------------------------------------------------------------------------------------------------------------ |
 | @Configuration  | 指定當前類是一個 Spring 配置類，當創建容器時會從該類上加載註解。<br />將該類想像為一個 Spring 配置文件即可。 |
-| @ComponentScan  | 用於指定 Spring 在初始化容器時要掃描的包，作用和 `<context:component-scan>` 一樣 |
-| @Bean           | 用於方法上，將方法返回值儲存到 Spring 容器中。               |
-| @PropertySource | 用於加載 properties 文件的配置                               |
-| @Import         | 導入其它 Spring 配置類                                       |
+| @ComponentScan  | 用於指定 Spring 在初始化容器時要掃描的包，作用和 `<context:component-scan>` 一樣                             |
+| @Bean           | 用於方法上，將方法返回值儲存到 Spring 容器中。                                                               |
+| @PropertySource | 用於加載 properties 文件的配置                                                                               |
+| @Import         | 導入其它 Spring 配置類                                                                                       |
 
 現在使用新入解替代以下xml配置
 
@@ -919,28 +1196,89 @@ Spring 的 AOP 底層實現就是對上面動態代理代碼進行了封裝，�
 
 切點(Pointcut)表達式用來定義斷言，用於匹配、判斷哪些連接點(Joinpoint)是否要織入通知(Advice)。Spring AOP 的切點表達式主要借鏡於 AspectJ，然而並未全部支援，可使用的代號有以下幾個：
 
-- `execution`：最主要的表示式，用來匹配方法執行的 Join Point。
-- `within`：必須是指定的型態，可用來取代某些 `execution` 模式。
-- `this`：代理物件必須是指定的型態，常用於 Advice 中要取得代理物件之時。
-- `target`：目標物件必須是指定的型態，常用於 Advice 中要取得目標物件之時。
-- `args`：引數必須是指定的型態，常用於 Advice 中要取得方法引數之時。。
-- `@target`：目標物件必須擁有指定的標型，常用於 Advice 中要取得標註之時。
-- `@args`：引數必須擁有指定的標註，常用於 Advice 中要取得標註之時。
-- `@within`：必須擁有指定的標註，常用於 Advice 中要取得標註之時。
-- `@annotation`：方法上必須擁有指定的標註，常用於 Advice 中要取得標註之時。
+- `execution`：最主要的表示式，用於匹配方法執行的連接點。
+
+- `within`：用於匹配目標物件必須是指定的類型(子類繼承的方法沒有override也算)的執行方法，可用來取代某些 `execution` 模式。
+
+  > 詳情可以看 @target 和 @within 註解的比較，只是 within 是目標對象的類型，@within是目標對象上的註解
+
+- `this`：用於匹配AOP代理物件必須是指定的類型的執行方法。注意是AOP代理對象的類型匹配，這樣就包括引入接口類型匹類。常用於 Advice 中要取得代理物件之時。
+
+- `target`：用於匹配目標物件必須是指定的類型的執行方法。注意是目標對象的類型匹配，這樣就不包括引入接口類型匹配。常用於 Advice 中要取得目標物件之時。
+
+- `args`：用於匹配當前執行的方法的傳入的參數為指定的類型的執行方法，常用於 Advice 中要取得方法參數時。
+
+- `@within`：用於匹配目標物件的執行方法，其目標物件持有指定註解。常用於 Advice 中要取得標註之時。
+
+  > 與 @within、@target 的區別下面有詳細介紹
+
+- `@target`：用於匹配目標物件的執行方法，其目標物件持有指定的註解。常用於 Advice 中要取得標註之時。
+
+- `@args`：用於匹配當前執行方法持有指定註解的方法，常用於 Advice 中要取得標註之時。
+
+- `@annotation`：方法上必須有指定的標註，常用於 Advice 中要取得標註之時。
+
+- bean：Spring AOP 擴展的，用於匹配特定名稱的 Bean 對象的執行方法
 
 表達式語法
 
 ```
-execution([修飾符] 返回值類型 包名.類名.方法名(參數))
+execution([修飾符] 返回值類型 [包名.類名.]方法名(參數))
 ```
 
+> `*`表示任意符號，`..`表示0或多個符號。
+
 + 修飾符可以省略
+
++ 包名、類名可以省略
+
 + 返回值類型、包名、類型、方法名可以使用星號`*`代表任意
+
 + 包名與類名之間一個點`.`代表當前包下的類，兩個點`..`表示當前包及其子包下的類
+
++ 方法名可以使用\*來模糊匹配，例如：set\* 匹配以 set 開頭的方法
+
 + 參數類表可以使用兩個點`..`表示任意個數、任意類型的參數
 
-> `*`表示任意符號，`..`表示0或多個符號。
++ 參數列表 (*, String) 代表匹配方法須有兩個參數，第一個任意類型、第二個為String 類型
+
++ 參數列表 (.., String) 代表匹配方法至少有一個參數，當只有一個參數時，該參數類型必須為 String，當有多個參數時，最後參數的類型必須為 String
+
+  > 注意：參數列表內除了常見的類型外，都必須以全類名指定
+
++ 當通知中需要取得目標對象執行方法的參數時，可以通過在通知方法上宣告欲取得參數，並在參數列表中指定通知方法上的參數名稱，且還要在 @After、@Before 等註解提供的 argNames 屬性上，提供參數列表上相同的參數名稱(多個使用逗點分開)
+
+  ``` java
+  @After(value = "execution(String com.godzilla.test..*.get*(abc, def))", argNames = "abc,def")
+      public void execute5(String abc, String def){
+      }
+  ```
+
+  上面的例子可以通過 args 表達式進行改寫，但是編譯器還是會建議你填上 argNames 屬性
+
+  ```java
+  @After("execution(String com.godzilla.test..*.get*(..)) && args(abc, def)")
+  public void execute6(String abc, String def){}
+  ```
+
+類型匹配語法
+
+很多地方都會按造類型的匹配，AspectJ提供了以下類型匹配同配符
+
++ *：匹配任何數量字符。可用於返回值、包名(一層)、類名、方法名
+
++ ..：匹配任何數量字符的重複，在類與包之間匹配任意數量的子包，在方法參數匹配任何數量的參數。(任意：0~N個)
+
++ +：匹配指定類型及其子類型。僅能做為後墜放在類型後邊
+
+  | 表達式            | 說明                                                                                                            |
+  | ----------------- | --------------------------------------------------------------------------------------------------------------- |
+  | java.lang.String  | 匹配String類型                                                                                                  |
+  | java.*.String     | 匹配 java 包下任何一級子包下的String類型。例如可以匹配 java.lang.String ，但不能匹配 java.lang.ss.String        |
+  | java.lang.*ing    | 匹配 java.lang 包下以 ing 結尾的類型                                                                            |
+  | java.lang.Number+ | 匹配 java.lang 包下的 Number 類型及其子類型。例如匹類 java.lang.Number、java.lang.Integer、java.math.BigInteger |
+
+  
 
 範例
 
@@ -988,13 +1326,13 @@ public Object around(ProceedingJoinPoint proceedingJoinPoint, Nullable nullable)
 <aop:通知類型 method="切面類中方法名" pointcut="切點表達式" />
 ```
 
-| 名稱         | 標籤                    | 說明                                                         |
-| ------------ | ----------------------- | ------------------------------------------------------------ |
-| 前置通知     | `<aop:before>`          | 用於配置前置通知。<br />指定的增強方法在切入點方法之前執行。 |
-| 後置通知     | `<aop:after-returning>` | 用於配置後置通知。<br />指定的增強方法在切入點方法之後執行。 |
+| 名稱         | 標籤                    | 說明                                                                 |
+| ------------ | ----------------------- | -------------------------------------------------------------------- |
+| 前置通知     | `<aop:before>`          | 用於配置前置通知。<br />指定的增強方法在切入點方法之前執行。         |
+| 後置通知     | `<aop:after-returning>` | 用於配置後置通知。<br />指定的增強方法在切入點方法之後執行。         |
 | 環繞通知     | `<aop:around>`          | 用於配置環繞通知。<br />指定的增強方法在切入點方法之前和之後都執行。 |
-| 異常拋出通知 | `<aop:throwing>`        | 用於配置異常拋出通知。<br />指定切入點方法在出現異常時執行   |
-| 最終通知     | `<aop:after>`           | 用於配置最終通知。<br />無論切入點的方法執行後是否有異常都會執行。 |
+| 異常拋出通知 | `<aop:throwing>`        | 用於配置異常拋出通知。<br />指定切入點方法在出現異常時執行           |
+| 最終通知     | `<aop:after>`           | 用於配置最終通知。<br />無論切入點的方法執行後是否有異常都會執行。   |
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -1085,16 +1423,16 @@ public Object around(ProceedingJoinPoint proceedingJoinPoint, Nullable nullable)
 
 通知註解的語法`@通知註解("切點表達式")`
 
-| 註解                      | 說明                                                         |
-| ------------------------- | ------------------------------------------------------------ |
-| `@EnableAspectJAutoProxy` | 啟動AspectJ動態代理，使用於Spring配置類上                    |
-| `@Aspect`                 | 標注該類為切面類                                             |
+| 註解                      | 說明                                                                                           |
+| ------------------------- | ---------------------------------------------------------------------------------------------- |
+| `@EnableAspectJAutoProxy` | 啟動AspectJ動態代理，使用於Spring配置類上                                                      |
+| `@Aspect`                 | 標注該類為切面類                                                                               |
 | `@Pointcut`               | 提取切點表達式，註解使用在方法上。<br />之後可以在各增強方法上以「方法名()」引用該切點表達式。 |
-| `@Before`                 | 用於配置**前置通知**，指定的增強方法在切入點方法之前執行     |
-| `@After-returning`        | 用於配置**後置通知**，指定的增強方法在切入點方法之後執行     |
-| `@Around`                 | 用於配置**環繞通知**，指定的增強方法在切入點方法前後執行     |
-| `@AfterThrowing`          | 用於配置**異常通知**，指定的增強方法在切入點方法出現異常後執行 |
-| `@After`                  | 用於配置**最終通知**，指定的增強方法在切入點後執行(無論有無異常)。 |
+| `@Before`                 | 用於配置**前置通知**，指定的增強方法在切入點方法之前執行                                       |
+| `@After-returning`        | 用於配置**後置通知**，指定的增強方法在切入點方法之後執行                                       |
+| `@Around`                 | 用於配置**環繞通知**，指定的增強方法在切入點方法前後執行                                       |
+| `@AfterThrowing`          | 用於配置**異常通知**，指定的增強方法在切入點方法出現異常後執行                                 |
+| `@After`                  | 用於配置**最終通知**，指定的增強方法在切入點後執行(無論有無異常)。                             |
 
 ###### 範例
 
@@ -1226,6 +1564,23 @@ public class MyAspect {
     }
 }
 ```
+
+#### @within、@target 表達式的區別
+
+@within 和 @target 切點表達式，接受一個 annotation 作為表達式的值，都是用來判斷目標對象的類上是否有標註該註解，兩者有以下差異
+
++ @within：會匹配到標示指定註解的類中的方法和子類中那些沒有被 override 的父類方法
++ @target：會匹配到標示指定註解欸中的方法。**不涉及其他類**。
+
+#### @annotation
+
+@annotation 切點表達式，接受一個 annotition 作為表達式的值，用來匹配那些有標註該註解的方法
+
+#### @args
+
+@args 切點表達式，接受一個 annotation 作為表達式的值，用來匹配那些方法參數上有該註解的方法。
+
+
 
 ### Spring JdbcTemplate
 
@@ -1420,11 +1775,11 @@ public void test1() throws Exception {
 
   該接口是 Spring 的事務管理器，裡面提供了常用的事務操作方法。
 
-  | 方法                                                         | 說明               |
-  | ------------------------------------------------------------ | ------------------ |
+  | 方法                                                                 | 說明               |
+  | -------------------------------------------------------------------- | ------------------ |
   | `TransactionStatus getTransaction(TransactionDefination defination)` | 獲取事務的狀態訊息 |
-  | `void commit(TransactionStatus status)`                      | 提交事務           |
-  | `void rollback(TransactionStatus status)`                    | 回滾事務           |
+  | `void commit(TransactionStatus status)`                              | 提交事務           |
+  | `void rollback(TransactionStatus status)`                            | 回滾事務           |
 
   > `PlatformTransactionManager` 是接口，不同的 Dao 層技術有不同的實現類。
   >
@@ -1436,13 +1791,13 @@ public void test1() throws Exception {
 
   事務的定義訊息對象
 
-  | 方法                         | 說明                                                         |
-  | ---------------------------- | ------------------------------------------------------------ |
-  | `int getIsolationLevel()`    | 獲得事務的隔離級別                                           |
-  | `int getPropagationBehavior` | 獲得事務的傳播行為                                           |
-  | `int getTime()`              | 獲得超時時間<br />默認值是-1，沒有時間限制。如果有，以秒為單位設置。 |
-  | `boolean isReadOnly()`       | 是否只讀。<br />建議查詢時設置為以讀。                       |
-  | `getTransactionManager()`    | 獲得該交易所指定使用的`transactionManager`<br />當Spring容器內超過兩個交易管理器時需指定 |
+  | 方法                         | 說明                                                                                          |
+  | ---------------------------- | --------------------------------------------------------------------------------------------- |
+  | `int getIsolationLevel()`    | 獲得事務的隔離級別                                                                            |
+  | `int getPropagationBehavior` | 獲得事務的傳播行為                                                                            |
+  | `int getTime()`              | 獲得超時時間<br />默認值是-1，沒有時間限制。如果有，以秒為單位設置。                          |
+  | `boolean isReadOnly()`       | 是否只讀。<br />建議查詢時設置為以讀。                                                        |
+  | `getTransactionManager()`    | 獲得該交易所指定使用的`transactionManager`<br />當Spring容器內超過兩個交易管理器時需指定      |
   | `getRollbackFor`             | 獲得當遇到那些錯誤時會執行rollback操作，默認是`RunTimeException`。<br />建議設置為`Exception` |
 
 + `TransactionStatus`
@@ -1668,15 +2023,15 @@ AOP配置事務範例。數據庫連接池使用c3p0，數據庫使用mysql。
 
 ##### 事務相關註解
 
-| 註解                           | 說明                                                         |
-| ------------------------------ | ------------------------------------------------------------ |
-| `@Transactional`               | 可以應用在類或方法上，使用在類上表示該類中的所有方法都套用該配置，<br />如果類與方法上都有，則採就近原則。<br />該註解可用屬性進行事務定義 |
+| 註解                           | 說明                                                                                                                                                                                                                    |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@Transactional`               | 可以應用在類或方法上，使用在類上表示該類中的所有方法都套用該配置，<br />如果類與方法上都有，則採就近原則。<br />該註解可用屬性進行事務定義                                                                              |
 | `@EnableTransactionManagement` | 用於Spring配置類上，表示啟用交易管理。**使用時Spring容器內需要有`TransactionManager`的實現類物件。** <br />當Spring容器內存在兩個交易管理器，需要`@Transaction`註解使用`transactionManager`屬性指定使用哪個交易管理器。 |
 
 ##### 註解配置事務相關XML標籤
 
-| 標籤                     | 說明                                                         |
-| ------------------------ | ------------------------------------------------------------ |
+| 標籤                     | 說明                                                           |
+| ------------------------ | -------------------------------------------------------------- |
 | `<tx:annotation-driven>` | 開啟事務的註解驅動。如果缺少此配置，`@Transactional`註解無效。 |
 
 ##### 範例
