@@ -35,9 +35,9 @@ scope 和 prototype 區別：
 
 ##### 生命週期方法配置
 
-`init-method` 指定類中初始化方法名稱，當對象被創建時呼叫。
+`init-method` 指定類中初始化方法名稱，當對象創建設置完屬性值後呼叫。
 
-`destroy-method` 指定類中銷毀方法名稱，當對象被銷毀時呼叫。
+`destroy-method` 指定類中銷毀方法名稱，當對象被銷毀前呼叫。
 
 ```xml
 <bean id="userDao" class="org.learning.dao.impl.UserDaoImpl" scope="singleton" 
@@ -46,6 +46,41 @@ scope 和 prototype 區別：
 ```
 
 > 單實例的Bean會在容器關閉時銷毀，而多實例的Bean沒有銷毀方法，**容器不管理這些多實例的Bean**，容器指定在你獲取多實例Bean時創建Bean交給你，何時銷毀由你自己決定。
+
+###### InitializingBean 和 DisposableBean
+
+自定義初始化、銷毀方法的第二種方式，Bean 通過實現 InitializingBean 與 DisposableBean 接口中的方法，在 Bean 創建銷毀時，Spring 會運行接口的方法：
+
+ InitializingBean 接口方法：
+
++ afterPropertiesSet：同`init-method`也是在Bean屬性設值後執行
+
+DisposableBean 接口方法：
+
++ destroy：同`destroy-method`，也是在 Bean 銷毀前執行
+
+###### Bean後置處理器
+
+Spring 提供 BeanPostProcessor接口，自定義Bean後置處理器，就可以在自定義的初始化方法前後運行接口內的方法：
+
++ postProcessBeforeInitialization：在自定義初始化方法執行前執行
++ postProcessAfterInitialization：在自定義初始化方法執行後執行
+
+**<font color="ff0000">Bean後置處理器必須被IOC容器管理，所有的Bean創建，都會觸發該後置處理器運行。</font>**
+
+> Spring底層中，在對Bean進行創建賦值時，也大量使用BeanPostProcessor
+
+常見的BeanPostProcessor實現類：
+
++ ApplicationContextAwareProcessor
+  + 作用：組件內取得IOC容器
+  + 使用方式：Bean 實現 ApplicationContextAware 接口
++ BeanValidationPostProcessor
+  + 作用：進行數據校驗，web經常使用。
+  + 使用方式：請見spring-mvc筆記的數據校驗章節
++ initDestroyAnnotationBeanPostProcessor
+  + 作用：用來處理`@PostConstruct`以及`@PreDestroy`註解的
+  + 使用方式：使用JSR250定義的`@PostConstruct `和 `@PreDestroy` 註解
 
 ##### bean 實例化的三種方式
 
@@ -426,10 +461,12 @@ public class Hobby {
 | @Controller    | 使用在Controller層類上用於實例化Bean                         |
 | @Service       | 使用在Service層類上用於實例化Bean                            |
 | @Repository    | 使用在Dao層上用於實例化Bean                                  |
-| @Autowired     | 根據類型進行依賴注入。**可以在構造器、方法、參數、成員變量上使用。** |
+| @Autowired     | 根據類型進行依賴注入。**可以在構造器、方法、參數、成員變量上使用。**如果同類型有多個，則使用屬性名稱、構造方法參數名稱、set方法參數名稱為Bean ID去容器中找。 |
 | @Qualifier     | 必須結合@Autowired一起使用，用於根據`bean id`進行依賴注入    |
-| @Resource      | 等於@Autowired + @Qualifier，根據bean id進行注入。改善@Qualifier還須搭配@Autowired一起使用問題。**可以在成員變量、方法上使用** |
-| @Value         | 使用在成員變量上，注入普通屬性                               |
+| @Resource      | JSR250規範註解，相當於 @Autowired + @Qualifier，默認使用 bean id 查找。**可以在成員變量、方法上使用。PS：該註解會讓@Primary失效** |
+| @Primary       | 標示為優先級最高的Bean，當同類型Bean同時存在2個以上，會注入優先級最高的。 |
+| @Inject        | JSR303規範註解。使用前必須導入依賴，功能於 @Autowired 一樣，且支持 @Primary |
+| @Value         | 使用在成員變量上，設定屬性值。以前在`<property>`標籤value屬性能寫的在`@Value`一樣也能寫。例如：<br />1. 基本數值<br />2. SpEL：#{} ex: #{3 + 2 * 6}<br />3. ${}：取出配置文件的值(運行環境變量裡面的值) |
 | @Scope         | 標註Bean的作用範圍                                           |
 | @PostConstruct | 使用在方法上，指定Bean的初始化方法，構造方法執行完後調用     |
 | @PreDestroy    | 使用在方法上，指定Bean的銷毀方法，在Bean被銷毀前調用         |
@@ -445,7 +482,31 @@ public class Hobby {
 
 > @Value注入可以搭配SPEL的方式，讀取在配置文件中導入的properties檔數據
 
-##### 不推薦使用@Autowired進行Field注入的原因
+##### @Autowired
+
+@Autowired：
+
++ 作用：進行組件的依賴裝配。使用類型在IOC容器查找，如果找到進行裝配，找不到拋出異常。當IOC容器出現多個相同類型組件，使用屬性名稱、構造器參數名稱、set方法參數名稱作為Bean Id 在容器中查找。
++ 使用位置：屬性、方法、參數
++ 屬性：
+  + required：是否為必須的，true時，IOC容器找不到該類型組件拋出異常，默認 true。
++ 技巧：
+  + 當組件只有一個有參構造器，進行構造器注入時，@Autowired可以省略不寫
+  + 配置類中，@Bean標註的方法，方法參數可以省略@Autowired。
+
+##### 注入Spring底層組件
+
+自定義組件如果想要使用 Spring 底層的組件(ApplicationContext、BeanFactory等)，自定義組件實現`xxxAware`，Spring 在創建自定義組件時，就會調用該接口方法，傳遞底層的組件。
+
+常見的Aware：
+
++ `ApplicationContextAware` ：自定義組件獲取 ApplicationContext。
++ `BeanNameAware`：獲取自定義組件在IOC容器中的Bean Id。
++ `EmbeddedValueResolverAware`：獲取值解析器，專門用於解析字串中的佔位符(${}、#{})。
+
+> 這些xxxAware的功能，都是使用xxxProcessor(後置處理器)來處理。
+
+##### 不推薦Field注入的原因
 
 在使用IDEA開發時，在 Field 上使用Spring的依賴注入註解 `@Autowired` 後會出現如下警告
 
@@ -635,6 +696,44 @@ AnnotationConfigApplicationContext app = new AnnotationConfigApplicationContext(
 ```
 
 至此已完成使用 Spring 新註解替代 xml 配置。
+
+##### @Profile
+
+Spring 可以依據當前環境，動態的啟動和切換一系列組件的功能。
+
+通常專案開發時會有以下環境：開發環境、測試環境、生產環境，不同的環境中使用的組件是不同，我們想要在不改動大量代碼達到該功能，而`@Profile`就是用來處理這種需求。
+
+@Profile
+
++ 作用：為方法設定環境標示，當前環境等於環境標示，該@Bean方法該組件才會被註冊。
++ 使用位置：類、方法
++ 屬性：
+  + value：環境標示的值
+
+> 當 @Profile 使用在類上，只有指定環境的時候，整個配置類裡面配置才生效。
+>
+> 沒有標註環境標示的 Bean，在任何環境下都是加載。
+
+想要切換環境標示，有以下幾種方式：
+
+1. 在虛擬機參數(VM options)加入，`-Dspring.profiles.active=環境標示`
+
+2. 在啟動容器前設置環境
+
+   ``` java
+   @Test
+   public void test01() {
+       AnnotationConfigApplicationContext app = new AnnotationConfigApplicationContext();
+       //1. 設置啟動環境
+       app.getEnvironment().setActiveProfiles("test", "prod");
+       //2. 載入主配置類
+       app.register(MainConfig.class);
+       //3. 刷新啟動容器
+       app.refresh();
+   }
+   ```
+
+   
 
 ### Spring整合junit
 
@@ -856,8 +955,8 @@ Spring 的 AOP 底層實現就是對上面動態代理代碼進行了封裝，�
 
 + Target(目標對象)：代理的目標對象
 + Proxy(代理對象)：一個類被AOP增強後，就產生一個代理對象
-+ Joinpoint(連接點)：所謂連接點是指那些被攔截到的點。在 Spring 中這些點指的是方法，因為 Spring 只支持方法類型的連接點。**可以被增強的方法就稱為「連接點」**。
-+ PointCut(切入點/切點)：所謂切入點就是對符合條件的Joinpoint進行攔截的定義。可以理解為**被增強的方法稱為「切入點」**。
++ Joinpoint(連接點)：指那些被攔截到的點。而在 Spring 中這些點指的是方法，因為 Spring 只支持方法類型的連接點。**可以被增強的方法就稱為「連接點」**。
++ PointCut(切入點/切點)：指符合切點表達式的接點。可以理解為**被增強的方法稱為「切入點」**。
 + Advice(通知/增強)：攔截到Joinpoint之後要做的事情就是通知。就是指前置增強與後製增強的那些方法。
 + Aspect(切面)：是切入點與通知的結合。就是JDK或cglib動態代理中的回調方法。
 + Weaving(織入)：是指運行期間把增強應用到目標對象來創建代理對象的過程。Spring 採用動態代理織入，而AspectJ採用編譯時期織入與類裝載期織入。
@@ -883,13 +982,13 @@ Spring 的 AOP 底層實現就是對上面動態代理代碼進行了封裝，�
 
    ```xml
    <dependency>
-       <groupId>org.aspectj</groupId>
-       <artifactId>aspectjweaver</artifactId>
-       <version>1.9.6</version>
+       <groupId>org.springframework</groupId>
+       <artifactId>spring-aspects</artifactId>
+       <version>4.3.13.RELEASE</version>
    </dependency>
    ```
 
-   
+   Maven 會導入 `spring-aspects`和 `aspectjweaver` jar的依賴。
 
 2. 創建目標接口和目標類(內有切點)
 
@@ -901,18 +1000,8 @@ Spring 的 AOP 底層實現就是對上面動態代理代碼進行了封裝，�
 
 5. 在xml配置文件織入關係(aop:config)
 
-   ```xml
-   <?xml version="1.0" encoding="UTF-8"?>
-   <beans xmlns="http://www.springframework.org/schema/beans"
-          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-          xmlns:aop="http://www.springframework.org/schema/aop" 
-          xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
-                               http://www.springframework.org/schema/aop http://www.springframework.org/schema/aop/spring-aop.xsd">
-   </beans>
-   ```
-
    > xml 配置文件需先宣告aop命名空間
-
+   
 6. 測試代碼
 
    
@@ -992,11 +1081,13 @@ public Object around(ProceedingJoinPoint proceedingJoinPoint, Nullable nullable)
 
 | 名稱         | 標籤                    | 說明                                                         |
 | ------------ | ----------------------- | ------------------------------------------------------------ |
-| 前置通知     | `<aop:before>`          | 用於配置前置通知。<br />指定的增強方法在切入點方法之前執行。 |
-| 後置通知     | `<aop:after-returning>` | 用於配置後置通知。<br />指定的增強方法在切入點方法之後執行。 |
-| 環繞通知     | `<aop:around>`          | 用於配置環繞通知。<br />指定的增強方法在切入點方法之前和之後都執行。 |
-| 異常拋出通知 | `<aop:throwing>`        | 用於配置異常拋出通知。<br />指定切入點方法在出現異常時執行   |
-| 最終通知     | `<aop:after>`           | 用於配置最終通知。<br />無論切入點的方法執行後是否有異常都會執行。 |
+| 前置通知     | `<aop:before>`          | 用於配置前置通知。<br />增強方法在切入點方法之前執行。       |
+| 返回通知     | `<aop:after-returning>` | 用於配置返回通知。<br />增強方法在切入點方法「正常執行」之後執行。 |
+| 環繞通知     | `<aop:around>`          | 用於配置環繞通知。<br />增強方法在切入點方法之前和之後都執行。 |
+| 異常拋出通知 | `<aop:throwing>`        | 用於配置異常拋出通知。<br />切入點方法在出現異常時執行       |
+| 後置通知     | `<aop:after>`           | 用於配置後置通知。<br />切入點的方法執行後是否有異常都會執行。 |
+
+
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -1085,87 +1176,144 @@ public Object around(ProceedingJoinPoint proceedingJoinPoint, Nullable nullable)
 
 ###### AOP 註解
 
-通知註解的語法`@通知註解("切點表達式")`
+通知註解的語法`@通知註解("切點表達式")`。
+
+AOP註解：
+
++ @EnableAspectJAutoProxy
+
+  + 作用：啟動AspectJ動態代理，用於Spring配置類上
+  + 使用位置：配置類
+
++ @Aspect
+
+  + 作用：標註為切面類
+  + 使用位置：切面類
+
++ @Pointcut
+
+  + 作用：抽取切點表達式，之後可以在各通知引用。
+
+    本類通知方法使用「方法名稱()」引用該切點表達式。
+
+    非本類方法可以使用「全類名.方法名稱()」引用外部類的切點表達式。
+
+  + 使用位置：方法
+
+  + 屬性：
+
+    + value：切點表達式
+
++ @Before
+
+  + 作用：前置通知，被註釋的方法在目標方法「之前」執行
+  + 使用位置：方法
+  + 屬性：
+    + value：切點表達式，或引用`@Pointcut`抽取的切點。
+
++ @AfterReturning
+
+  + 作用：返回通知，被註釋的方法在目標方法正常執行「返回值後」執行
+  + 使用位置：方法
+  + 屬性：
+    + value：切點表達式，或引用`@Pointcut`抽取的切點。
+    + returning：指定通知參數名稱接收目標方法返回值
+
++ @AfterThrowing
+
+  + 作用：異常通知，被註釋的方法在目標方法「出現異常」時執行
+  + 使用位置：方法
+  + 屬性：
+    + value：切點表達式，或引用`@Pointcut`抽取的切點。
+    + throwing：指定通知參數名稱接收目標方法發生的異常
+
++ @After
+
+  + 作用：被註釋的方法在目標方法執行「之後」執行(**出現異常也執行**)
+  + 使用位置：方法
+  + 屬性：
+    + value：切點表達式，或引用`@Pointcut`抽取的切點。
+
+> 通知方法想要取得目標方法訊息，可以在「**第一個形參**」使用 JointPoint 類型接收
 
 | 註解                      | 說明                                                         |
 | ------------------------- | ------------------------------------------------------------ |
-| `@EnableAspectJAutoProxy` | 啟動AspectJ動態代理，使用於Spring配置類上                    |
+| `@EnableAspectJAutoProxy` | 啟動AspectJ動態代理，用於Spring配置類上                      |
 | `@Aspect`                 | 標注該類為切面類                                             |
-| `@Pointcut`               | 提取切點表達式，註解使用在方法上。<br />之後可以在各增強方法上以「方法名()」引用該切點表達式。 |
+| `@Pointcut`               | 提取切點表達式，註解使用在方法上。<br />之後可以在各增強方法上以「方法名()」引用該切點表達式。如果要引用外部切點可以使用「全類名.方法名()」 |
 | `@Before`                 | 用於配置**前置通知**，指定的增強方法在切入點方法之前執行     |
-| `@After-returning`        | 用於配置**後置通知**，指定的增強方法在切入點方法之後執行     |
+| `@After-returning`        | 用於配置**返回通知**，指定的增強方法在切入點方法之後執行     |
 | `@Around`                 | 用於配置**環繞通知**，指定的增強方法在切入點方法前後執行     |
 | `@AfterThrowing`          | 用於配置**異常通知**，指定的增強方法在切入點方法出現異常後執行 |
-| `@After`                  | 用於配置**最終通知**，指定的增強方法在切入點後執行(無論有無異常)。 |
+| `@After`                  | 用於配置**後置通知**，指定的增強方法在切入點後執行(無論有無異常)。 |
 
 ###### 範例
 
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<beans xmlns="http://www.springframework.org/schema/beans"
-       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-       xmlns:aop="http://www.springframework.org/schema/aop"
-       xmlns:context="http://www.springframework.org/schema/context"
-       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
-                            http://www.springframework.org/schema/aop http://www.springframework.org/schema/aop/spring-aop.xsd http://www.springframework.org/schema/context https://www.springframework.org/schema/context/spring-context.xsd">
-    <!-- 配置組件掃描 -->
-    <context:component-scan base-package="anno" />
-
-    <!-- aop 自動代理 -->
-    <aop:aspectj-autoproxy></aop:aspectj-autoproxy>
-</beans>
+```java
+@Configuration
+@ComponentScan("org.learning")
+// 開啟AOP註解
+@EnableAspectJAutoProxy
+public class MainConfig {
+}
 ```
 
 ```java
-@Component("myAspect")
-// 標注該類為切面類
+// 標註為切面類
 @Aspect
-public class MyAspect {
+@Component
+public class LogAspect {
 
-    // 前置增強
-    // <aop:before method="before" pointcut="execution(public void aop.Target.save())" />
-    @Before("execution(public void anno.Target.save())")
-    public void before(){
-        System.out.println("前置增強");
+    // 抽取切點表達式
+    @Pointcut("execution(public int org.learning.math.MathCalc.div(..))")
+    public void pointCut() {
     }
 
-    // 後置增強
-    // <aop:AfterReturning method="before" pointcut="execution(public void aop.Target.save())" />
-    @AfterReturning("execution(public void anno.Target.save())")
-    public void afterReturning(){
-        System.out.println("後置增強");
+    // 前置通知
+    @Before(value = "pointCut()")
+    public void before(JoinPoint joinPoint) {
+        String methodName = joinPoint.getSignature().getName();
+        Object[] methodArgs = joinPoint.getArgs();
+        System.out.printf("%s 方法運行 參數為 %s%n", methodName, Arrays.toString(methodArgs));
     }
 
-    /**
-     * 環繞增強
-     * @param joinPoint 切入點方法
-     * @return 切入點返回值
-     * @throws Throwable
-     */
-    // <aop:Around method="before" pointcut="execution(public void aop.Target.save())" />
-    @Around("execution(public void anno.Target.save())")
-    public Object around(ProceedingJoinPoint joinPoint) throws Throwable {
-        System.out.println("環繞-前");
-        // 執行切入點方法
-        Object o = joinPoint.proceed();
-        System.out.println("環繞-後");
-
-        return o;
+    // 返回通知
+    // JointPoint必須是方法參數第一個，否則會拋出異常
+    // returning屬性：取得目標方法返回值，指定方法參數名稱
+    @AfterReturning(value = "pointCut()", returning = "returnValue")
+    public void afterReturning(JoinPoint joinPoint, Object returnValue) {
+        String methodName = joinPoint.getSignature().getName();
+        System.out.printf("%s 方法執行完成 返回值為 %s%n", methodName, returnValue);
     }
 
-    // 異常拋出增強
-    // <aop:AfterThrowing method="before" pointcut="execution(public void aop.Target.save())" />
-    @AfterThrowing("execution(public void anno.Target.save())")
-    public void afterThrowing(){
-        System.out.println("異常拋出增強");
+    // 後置通知
+    @After(value = "pointCut()")
+    public void after(JoinPoint joinPoint) {
+        String methodName = joinPoint.getSignature().getName();
+        System.out.printf("%s 方法執行完成%n", methodName);
     }
 
-    // 最終增強
-    // <aop:After method="before" pointcut="execution(public void aop.Target.save())" />
-    @After("execution(public void anno.Target.save())")
-    public void after(){
-        System.out.println("最終增強");
+    // 異常通知
+    // JointPoint必須是方法參數第一個，否則會拋出異常
+    // throwing屬性：取得目標方法異常，指定方法參數名稱
+    @AfterThrowing(value = "pointCut()", throwing = "exception")
+    public void afterThrowing(JoinPoint joinPoint, Exception exception) {
+        String methodName = joinPoint.getSignature().getName();
+        System.out.printf("%s 方法執行錯誤 拋出異常 %s%n", methodName, exception.toString());
     }
+}
+
+```
+
+``` java
+@Component
+public class MathCalc {
+
+    public int div(int i, int j){
+        System.out.println("目標方法執行");
+        return i/j;
+    }
+
 }
 ```
 
